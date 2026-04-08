@@ -32,6 +32,13 @@ const isEventTrackingEnabled = (competition) => {
   return mode === 'events' && scoringType === 'goals';
 };
 
+const toIdString = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
 // ── League matches ───────────────────────────────────────────────────────────
 const getDivisionMatches = async (req, res) => {
   const matches = await populateMatch(
@@ -209,10 +216,10 @@ const ensurePlayerBelongsToTeam = (team, playerName, playerSlot) => {
 
 const recalculateMatchFromEvents = async (match) => {
   const goals = await MatchEvent.find({ match: match._id, type: 'goal' }).lean();
-  const teamAId = match.teamA?.toString();
-  const teamBId = match.teamB?.toString();
-  const scoreA = goals.filter((e) => e.team?.toString() === teamAId).length;
-  const scoreB = goals.filter((e) => e.team?.toString() === teamBId).length;
+  const teamAId = toIdString(match.teamA);
+  const teamBId = toIdString(match.teamB);
+  const scoreA = goals.filter((e) => toIdString(e.team) === teamAId).length;
+  const scoreB = goals.filter((e) => toIdString(e.team) === teamBId).length;
   await finaliseMatch(match, { goals: { a: scoreA, b: scoreB } }, 'goals');
 };
 
