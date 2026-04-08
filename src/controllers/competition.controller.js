@@ -4,6 +4,24 @@ const Team = require('../models/Team');
 const Sport = require('../models/Sport');
 const { calculateStandings } = require('../services/standings.service');
 
+const normalizeSportName = (value = '') =>
+  value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const isFootballSport = (sport) => {
+  const slug = (sport?.slug || '').toLowerCase();
+  const name = normalizeSportName(sport?.name || '');
+  return slug === 'football' || name.includes('futbol') || name.includes('football');
+};
+
+const isTennisSport = (sport) => {
+  const slug = (sport?.slug || '').toLowerCase();
+  const name = normalizeSportName(sport?.name || '');
+  return slug === 'tennis' || name.includes('tenis') || name.includes('tennis');
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const autoNextSeason = (season) => {
   if (!season) return 'Temporada 2';
@@ -50,6 +68,26 @@ const createCompetition = async (req, res) => {
 
   const sport = await Sport.findById(sportId);
   if (!sport) return res.status(404).json({ message: 'Sport not found' });
+  const requestedTeamSize = Number(settings?.teamSize);
+  const hasTeamSize = settings?.teamSize !== undefined && settings?.teamSize !== null && settings?.teamSize !== '';
+
+  if (isFootballSport(sport)) {
+    if (!hasTeamSize || !Number.isInteger(requestedTeamSize) || requestedTeamSize < 3 || requestedTeamSize > 30) {
+      return res.status(400).json({ message: 'En f\u00fatbol debe indicar un m\u00e1ximo de jugadores por equipo (3-30)' });
+    }
+  }
+
+  if (isTennisSport(sport)) {
+    if (!hasTeamSize || !Number.isInteger(requestedTeamSize) || ![1, 2].includes(requestedTeamSize)) {
+      return res.status(400).json({ message: 'En tenis debe indicar si es individual (1) o dobles (2)' });
+    }
+  }
+
+  if (!isFootballSport(sport) && !isTennisSport(sport) && hasTeamSize) {
+    if (!Number.isInteger(requestedTeamSize) || requestedTeamSize < 1 || requestedTeamSize > 30) {
+      return res.status(400).json({ message: 'Tama\u00f1o de equipo inv\u00e1lido' });
+    }
+  }
 
   // Merge sport defaults with provided settings
   const mergedSettings = { ...sport.defaultSettings, ...(settings || {}) };
@@ -209,3 +247,5 @@ module.exports = {
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason,
 };
+
+
