@@ -22,18 +22,28 @@ const createDivisionTeam = async (req, res) => {
     return res.status(403).json({ message: 'Forbidden' });
   }
 
-  const teamSize = division.competition.sport.teamSize || 1;
+  // Use division's teamSize if set, otherwise use sport's teamSize
+  const teamSize = division.teamSize ?? division.competition.sport.teamSize || 1;
   let teamName = name;
   let pNames = [];
 
-  if (playerNames && playerNames.length > 0) {
-    if (playerNames.length !== teamSize) {
-      return res.status(400).json({ message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}` });
+  // For teamSize <= 2, use playerNames; for teamSize > 2, use teamName
+  if (teamSize <= 2) {
+    if (playerNames && playerNames.length > 0) {
+      if (playerNames.length !== teamSize) {
+        return res.status(400).json({ message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}` });
+      }
+      pNames = playerNames.map(n => n.trim());
+      teamName = pNames.join(' / ');
+    } else if (!name) {
+      return res.status(400).json({ message: 'Nombre del equipo o nombres de jugadores son requeridos' });
     }
-    pNames = playerNames.map(n => n.trim());
-    teamName = pNames.join(' / ');
-  } else if (!name) {
-    return res.status(400).json({ message: 'Nombre del equipo o nombres de jugadores son requeridos' });
+  } else {
+    // For larger teams, just use the team name
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Nombre del equipo es requerido' });
+    }
+    teamName = name.trim();
   }
 
   const team = await Team.create({
@@ -42,7 +52,7 @@ const createDivisionTeam = async (req, res) => {
     competition: division.competition._id,
     division: divisionId,
     seasonName: division.seasonName,
-    players: pNames.length > 0 ? new Array(pNames.length).fill(null) : [],
+    players: teamSize > 2 ? [] : new Array(teamSize).fill(null),
   });
   await team.populate('players', 'name email');
   res.status(201).json(team);
@@ -155,7 +165,12 @@ const updateTeam = async (req, res) => {
   if (team.competition.organizer.toString() !== req.user._id.toString()) {
     return res.status(403).json({ message: 'Forbidden' });
   }
-  Object.assign(team, req.body);
+  
+  // Only allow updating the team name
+  if (req.body.name) {
+    team.name = req.body.name.trim();
+  }
+  
   await team.save();
   await team.populate('players', 'name email');
   res.json(team);

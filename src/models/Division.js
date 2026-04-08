@@ -21,6 +21,11 @@ const divisionSchema = new mongoose.Schema(
       required: true,
       default: 'Temporada 1',
     },
+    // Optional: Override sport's teamSize for this division
+    teamSize: {
+      type: Number,
+      default: null,
+    },
   },
   { timestamps: true }
 );
