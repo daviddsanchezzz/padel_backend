@@ -6,11 +6,15 @@ const {
   getMyOrganizations,
   getOrganization,
   getPublicOrganization,
+  getPublicCompetition,
+  getPublicDivision,
   updateOrganization,
 } = require('../controllers/organization.controller');
 
 // Public — no auth required
 router.get('/:id/public', getPublicOrganization);
+router.get('/:orgId/competitions/:compId/public', getPublicCompetition);
+router.get('/:orgId/divisions/:divId/public', getPublicDivision);
 
 // All routes below require a valid session
 router.use(authenticate);

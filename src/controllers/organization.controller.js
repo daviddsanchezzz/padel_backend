@@ -3,6 +3,10 @@ const { auth } = require('../lib/auth');
 const { fromNodeHeaders } = require('better-auth/node');
 const Organization = require('../models/Organization');
 const Competition = require('../models/Competition');
+const Division = require('../models/Division');
+const Team = require('../models/Team');
+const Match = require('../models/Match');
+const { calculateStandings } = require('../services/standings.service');
 
 const toSlug = (name) =>
   name
@@ -152,10 +156,92 @@ const updateOrganization = async (req, res) => {
   res.json(org);
 };
 
+// ── GET /api/organizations/:orgId/competitions/:compId/public ────────────────
+const getPublicCompetition = async (req, res) => {
+  const org = await Organization.findById(req.params.orgId);
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
+
+  const competition = await Competition.findById(req.params.compId)
+    .populate('sport', 'name slug scoringType teamSize');
+  if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
+  if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Competition not found' });
+
+  const activeSeason = competition.seasons?.find((s) => s.isActive);
+  let divisions = [];
+  if (activeSeason) {
+    divisions = await Division.find({
+      competition: competition._id,
+      seasonName: activeSeason.name,
+    }).sort({ order: 1, createdAt: 1 });
+  }
+
+  res.json({ org: { id: org._id, name: org.name }, competition, divisions });
+};
+
+// ── GET /api/organizations/:orgId/divisions/:divId/public ────────────────────
+const getPublicDivision = async (req, res) => {
+  const org = await Organization.findById(req.params.orgId);
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
+
+  const division = await Division.findById(req.params.divId).populate({
+    path: 'competition',
+    select: 'name type settings sport organizer organization status seasons',
+    populate: { path: 'sport', select: 'name scoringType teamSize' },
+  });
+  if (!division) return res.status(404).json({ message: 'Division not found' });
+
+  const competition = division.competition;
+  if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Not found' });
+  if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Not found' });
+
+  const isTournament = competition.type === 'tournament';
+
+  const allDivisions = await Division.find({
+    competition: competition._id,
+    seasonName: division.seasonName,
+  }).sort({ order: 1, createdAt: 1 });
+
+  const teams = await Team.find({ division: division._id }).sort({ createdAt: 1 });
+
+  const populateMatch = (query) =>
+    query
+      .populate('teamA', 'name players playerNames')
+      .populate('teamB', 'name players playerNames')
+      .populate('winner', 'name');
+
+  let matches = [], standings = [], bracket = {};
+  if (isTournament) {
+    const raw = await populateMatch(
+      Match.find({ division: division._id }).sort({ round: 1, bracketPosition: 1 })
+    );
+    raw.forEach((m) => {
+      if (!bracket[m.round]) bracket[m.round] = [];
+      bracket[m.round].push(m);
+    });
+  } else {
+    matches = await populateMatch(
+      Match.find({ division: division._id }).sort({ round: 1, bracketPosition: 1 })
+    );
+    standings = await calculateStandings(division._id);
+  }
+
+  res.json({
+    org: { id: org._id, name: org.name, authOrgId: org.authOrgId },
+    division,
+    allDivisions,
+    teams,
+    matches,
+    standings,
+    bracket,
+  });
+};
+
 module.exports = {
   createOrganization,
   getMyOrganizations,
   getOrganization,
   getPublicOrganization,
+  getPublicCompetition,
+  getPublicDivision,
   updateOrganization,
 };
