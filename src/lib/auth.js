@@ -8,7 +8,9 @@ const client = new MongoClient(process.env.MONGODB_URI);
 const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
   secret: process.env.BETTER_AUTH_SECRET,
-  database: mongodbAdapter(client),
+  // mongodbAdapter expects a Db instance, not the MongoClient.
+  // Explicit db name as fallback — avoids defaulting to 'test' if the URI has no db path.
+  database: mongodbAdapter(client.db(process.env.MONGODB_DB_NAME || 'padel')),
 
   emailAndPassword: {
     enabled: true,
