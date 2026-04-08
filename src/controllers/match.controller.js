@@ -40,6 +40,19 @@ const getDivisionMatches = async (req, res) => {
   res.json(matches);
 };
 
+const getMatchById = async (req, res) => {
+  const match = await populateMatch(Match.findById(req.params.id));
+  if (!match) return res.status(404).json({ message: 'Match not found' });
+
+  const isOrganizer = match.competition?.organizer?.toString() === req.user._id.toString();
+  if (!isOrganizer) {
+    const userTeam = await getPlayerTeam(req.user._id, match.teamA?._id || match.teamA, match.teamB?._id || match.teamB);
+    if (!userTeam) return res.status(403).json({ message: 'No eres jugador de este partido' });
+  }
+
+  res.json(match);
+};
+
 const generateLeagueMatches = async (req, res) => {
   const { divisionId } = req.params;
 
@@ -270,7 +283,7 @@ const recordMatchEvents = async (req, res) => {
   }
 
   const access = await assertCanEditMatch(req.user, match);
-  if (!access.allowed) return res.status(403).json({ message: 'No eres jugador de este partido' });
+  if (!access.allowed || !access.isOrganizer) return res.status(403).json({ message: 'Solo el organizador puede editar eventos' });
 
   const { enabledEventTypes } = getResultConfig(match.competition);
   const payloadEvents = normaliseEventsPayload(req.body.events);
@@ -427,6 +440,7 @@ const getPlayerMatches = async (req, res) => {
 };
 
 module.exports = {
+  getMatchById,
   getDivisionMatches,
   generateLeagueMatches,
   generateTournamentBracket,

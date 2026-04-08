@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getDivisionMatches,
+  getMatchById,
   generateLeagueMatches,
   generateTournamentBracket,
   getTournamentBracket,
@@ -32,6 +33,7 @@ router.post('/competitions/:competitionId/bracket/generate', requireOrganizer, g
 router.get('/competitions/:competitionId/bracket',           getTournamentBracket);
 
 // Shared
+router.get('/matches/:id',          getMatchById);
 router.put('/matches/:id/result',   recordResult);
 router.get('/matches/:id/events',   getMatchEvents);
 router.put('/matches/:id/events',   recordMatchEvents);
