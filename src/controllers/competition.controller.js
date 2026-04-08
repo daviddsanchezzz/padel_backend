@@ -60,7 +60,7 @@ const getCompetition = async (req, res) => {
 };
 
 const createCompetition = async (req, res) => {
-  const { name, type, sportId, description, settings } = req.body;
+  const { name, type, sportId, description, settings, season } = req.body;
 
   if (!name)    return res.status(400).json({ message: 'Name is required' });
   if (!type)    return res.status(400).json({ message: 'Type is required (league | tournament)' });
@@ -97,7 +97,7 @@ const createCompetition = async (req, res) => {
     type,
     sport: sportId,
     organizer: req.user._id,
-    seasons: [{ name: 'Temporada 1', isActive: true }],
+    seasons: [{ name: season?.trim() || 'Temporada 1', isActive: true }],
     description,
     settings: mergedSettings,
   });
@@ -247,5 +247,6 @@ module.exports = {
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason,
 };
+
 
 
