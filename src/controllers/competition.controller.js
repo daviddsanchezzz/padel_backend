@@ -22,6 +22,15 @@ const isTennisSport = (sport) => {
   return slug === 'tennis' || name.includes('tenis') || name.includes('tennis');
 };
 
+const normaliseResultConfig = (settings = {}) => {
+  const current = settings.resultConfig || {};
+  const mode = current.mode === 'events' ? 'events' : 'manual';
+  const enabledEventTypes = Array.isArray(current.enabledEventTypes)
+    ? current.enabledEventTypes.filter((t) => ['goal', 'assist', 'yellow_card', 'red_card'].includes(t))
+    : ['goal', 'assist', 'yellow_card', 'red_card'];
+  return { mode, enabledEventTypes };
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const autoNextSeason = (season) => {
   if (!season) return 'Temporada 2';
@@ -90,7 +99,16 @@ const createCompetition = async (req, res) => {
   }
 
   // Merge sport defaults with provided settings
-  const mergedSettings = { ...sport.defaultSettings, ...(settings || {}) };
+  const mergedSettings = {
+    ...sport.defaultSettings,
+    resultConfig: { mode: 'manual', enabledEventTypes: ['goal', 'assist', 'yellow_card', 'red_card'] },
+    ...(settings || {}),
+  };
+  mergedSettings.resultConfig = normaliseResultConfig(mergedSettings);
+
+  if (mergedSettings.resultConfig.mode === 'events' && sport.scoringType !== 'goals') {
+    return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
+  }
 
   const competition = await Competition.create({
     name,
@@ -107,6 +125,18 @@ const createCompetition = async (req, res) => {
 };
 
 const updateCompetition = async (req, res) => {
+  const existing = await Competition.findOne({ _id: req.params.id, organizer: req.user._id }).populate('sport');
+  if (!existing) return res.status(404).json({ message: 'Competition not found' });
+
+  if (req.body?.settings) {
+    const mergedSettings = { ...(existing.settings || {}), ...req.body.settings };
+    mergedSettings.resultConfig = normaliseResultConfig(mergedSettings);
+    if (mergedSettings.resultConfig.mode === 'events' && existing.sport?.scoringType !== 'goals') {
+      return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
+    }
+    req.body.settings = mergedSettings;
+  }
+
   const competition = await Competition.findOneAndUpdate(
     { _id: req.params.id, organizer: req.user._id },
     req.body,

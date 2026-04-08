@@ -8,6 +8,9 @@ const {
   generateDivisionBracket,
   getDivisionBracket,
   recordResult,
+  getMatchEvents,
+  recordMatchEvents,
+  getCompetitionPlayerStats,
   confirmResult,
   disputeResult,
   getPlayerMatches,
@@ -30,8 +33,11 @@ router.get('/competitions/:competitionId/bracket',           getTournamentBracke
 
 // Shared
 router.put('/matches/:id/result',   recordResult);
+router.get('/matches/:id/events',   getMatchEvents);
+router.put('/matches/:id/events',   recordMatchEvents);
 router.post('/matches/:id/confirm', confirmResult);
 router.post('/matches/:id/dispute', disputeResult);
 router.get('/player/matches',       getPlayerMatches);
+router.get('/competitions/:competitionId/player-stats', getCompetitionPlayerStats);
 
 module.exports = router;
