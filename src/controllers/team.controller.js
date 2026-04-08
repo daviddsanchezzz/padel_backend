@@ -2,11 +2,16 @@ const Team = require('../models/Team');
 const Division = require('../models/Division');
 const Competition = require('../models/Competition');
 
-const normalizePlayerNames = (playerNames) => {
+/**
+ * Converts a raw array of name strings into player slot objects.
+ * e.g. ['Carlos', 'María'] → [{ name: 'Carlos', userId: null }, { name: 'María', userId: null }]
+ */
+const buildPlayerSlots = (playerNames) => {
   if (!Array.isArray(playerNames)) return [];
   return playerNames
-    .map((name) => (typeof name === 'string' ? name.trim() : ''))
-    .filter(Boolean);
+    .map((n) => (typeof n === 'string' ? n.trim() : ''))
+    .filter(Boolean)
+    .map((name) => ({ name, userId: null }));
 };
 
 const resolveTeamSize = ({ competition, division }) => {
@@ -16,13 +21,12 @@ const resolveTeamSize = ({ competition, division }) => {
   return Number(fromDivision ?? fromCompetition ?? fromSport ?? 1);
 };
 
-// League teams (scoped to a division)
+// ── League teams (scoped to a division) ──────────────────────────────────────
 const getDivisionTeams = async (req, res) => {
   const division = await Division.findById(req.params.divisionId);
   if (!division) return res.status(404).json({ message: 'Division not found' });
 
-  const teams = await Team.find({ division: req.params.divisionId, seasonName: division.seasonName })
-    .populate('players', 'name email');
+  const teams = await Team.find({ division: req.params.divisionId, seasonName: division.seasonName });
   res.json(teams);
 };
 
@@ -38,35 +42,36 @@ const createDivisionTeam = async (req, res) => {
 
   const teamSize = resolveTeamSize({ competition: division.competition, division });
   const trimmedName = typeof name === 'string' ? name.trim() : '';
-  const pNames = normalizePlayerNames(playerNames);
+  const slots = buildPlayerSlots(playerNames);
 
   let teamName = trimmedName;
-  let storedPlayerNames = [];
+  let storedPlayers = [];
 
   if (teamSize <= 2) {
-    if (pNames.length !== teamSize) {
-      return res.status(400).json({ message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}` });
+    if (slots.length !== teamSize) {
+      return res.status(400).json({
+        message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}`,
+      });
     }
-    storedPlayerNames = pNames;
-    teamName = pNames.join(' / ');
-  } else if (!trimmedName) {
-    return res.status(400).json({ message: 'Nombre del equipo es requerido' });
+    storedPlayers = slots;
+    teamName = slots.map((p) => p.name).join(' / ');
+  } else {
+    if (!trimmedName) return res.status(400).json({ message: 'Nombre del equipo es requerido' });
+    storedPlayers = slots; // can be empty or partial for large teams
   }
 
   const team = await Team.create({
     name: teamName,
-    playerNames: storedPlayerNames,
+    players: storedPlayers,
     competition: division.competition._id,
     division: divisionId,
     seasonName: division.seasonName,
-    players: teamSize <= 2 ? new Array(teamSize).fill(null) : [],
   });
 
-  await team.populate('players', 'name email');
   res.status(201).json(team);
 };
 
-// Tournament teams (scoped to competition, no division)
+// ── Tournament teams (scoped to competition, no division) ────────────────────
 const getCompetitionTeams = async (req, res) => {
   const competition = await Competition.findById(req.params.competitionId);
   if (!competition) return res.status(404).json({ message: 'Competition not found' });
@@ -74,8 +79,11 @@ const getCompetitionTeams = async (req, res) => {
   const activeSeason = competition.seasons.find((s) => s.isActive);
   if (!activeSeason) return res.status(404).json({ message: 'No active season' });
 
-  const teams = await Team.find({ competition: req.params.competitionId, division: null, seasonName: activeSeason.name })
-    .populate('players', 'name email');
+  const teams = await Team.find({
+    competition: req.params.competitionId,
+    division: null,
+    seasonName: activeSeason.name,
+  });
   res.json(teams);
 };
 
@@ -91,36 +99,37 @@ const createCompetitionTeam = async (req, res) => {
 
   const teamSize = resolveTeamSize({ competition, division: null });
   const trimmedName = typeof name === 'string' ? name.trim() : '';
-  const pNames = normalizePlayerNames(playerNames);
+  const slots = buildPlayerSlots(playerNames);
 
   let teamName = trimmedName;
-  let storedPlayerNames = [];
+  let storedPlayers = [];
 
   if (teamSize <= 2) {
-    if (pNames.length !== teamSize) {
-      return res.status(400).json({ message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}` });
+    if (slots.length !== teamSize) {
+      return res.status(400).json({
+        message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}`,
+      });
     }
-    storedPlayerNames = pNames;
-    teamName = pNames.join(' / ');
-  } else if (!trimmedName) {
-    return res.status(400).json({ message: 'Nombre del equipo es requerido' });
+    storedPlayers = slots;
+    teamName = slots.map((p) => p.name).join(' / ');
+  } else {
+    if (!trimmedName) return res.status(400).json({ message: 'Nombre del equipo es requerido' });
+    storedPlayers = slots;
   }
 
   const team = await Team.create({
     name: teamName,
-    playerNames: storedPlayerNames,
+    players: storedPlayers,
     competition: competitionId,
     division: null,
     seasonName: activeSeason.name,
-    players: teamSize <= 2 ? new Array(teamSize).fill(null) : [],
     seed: seed || null,
   });
 
-  await team.populate('players', 'name email');
   res.status(201).json(team);
 };
 
-// Player joining teams
+// ── Assign a registered user to a player slot ────────────────────────────────
 const joinTeam = async (req, res) => {
   const { id } = req.params;
   const { position } = req.body;
@@ -132,41 +141,44 @@ const joinTeam = async (req, res) => {
   if (!team) return res.status(404).json({ message: 'Team not found' });
 
   const teamSize = resolveTeamSize({ competition: team.competition, division: team.division });
+
   if (!Number.isInteger(position) || position < 0 || position >= teamSize) {
     return res.status(400).json({ message: `Posición inválida. Debe ser entre 0 y ${teamSize - 1}` });
   }
 
-  const userId = req.user._id.toString();
-  const userAlreadyInTeam = team.players.some((playerId) => playerId && playerId.toString() === userId);
-  if (userAlreadyInTeam) {
+  const userId = req.user.id;
+
+  // User already claimed a slot in this team
+  if (team.players.some((p) => p.userId === userId)) {
     return res.status(400).json({ message: 'Ya estás en este equipo' });
   }
 
+  // User already in another team in the same scope
   const scopeQuery = team.division
     ? { division: team.division._id, seasonName: team.seasonName }
     : { competition: team.competition._id, division: null, seasonName: team.seasonName };
 
   const otherTeams = await Team.find({ ...scopeQuery, _id: { $ne: id } });
-  const userInOtherTeam = otherTeams.some((t) => t.players.some((playerId) => playerId && playerId.toString() === userId));
-  if (userInOtherTeam) {
+  if (otherTeams.some((t) => t.players.some((p) => p.userId === userId))) {
     return res.status(400).json({ message: 'Ya estás en otro equipo en esta división' });
   }
 
-  if (!team.playerNames[position]) {
-    return res.status(400).json({ message: `La posición ${position} no está disponible para este equipo` });
+  // The slot must exist (have a name) and be unclaimed
+  const slot = team.players[position];
+  if (!slot) {
+    return res.status(400).json({ message: `La posición ${position} no existe en este equipo` });
   }
-
-  if (team.players[position]) {
+  if (slot.userId) {
     return res.status(400).json({ message: `La posición ${position} ya está ocupada` });
   }
 
-  team.players[position] = req.user._id;
+  team.players[position].userId = userId;
   await team.save();
 
-  await team.populate('players', 'name email');
   res.json(team);
 };
 
+// ── Update team name / player names ──────────────────────────────────────────
 const updateTeam = async (req, res) => {
   const team = await Team.findById(req.params.id)
     .populate({ path: 'competition', populate: { path: 'sport' } })
@@ -186,17 +198,19 @@ const updateTeam = async (req, res) => {
       return res.status(400).json({ message: 'Debe proporcionar los nombres de los jugadores' });
     }
 
-    const pNames = normalizePlayerNames(req.body.playerNames);
-    if (pNames.length !== teamSize) {
-      return res.status(400).json({ message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}` });
+    const slots = buildPlayerSlots(req.body.playerNames);
+    if (slots.length !== teamSize) {
+      return res.status(400).json({
+        message: `Debe proporcionar exactamente ${teamSize} ${teamSize === 1 ? 'nombre de jugador' : 'nombres de jugadores'}`,
+      });
     }
 
-    team.playerNames = pNames;
-    team.name = pNames.join(' / ');
-
-    if (!Array.isArray(team.players) || team.players.length < teamSize) {
-      team.players = new Array(teamSize).fill(null);
-    }
+    // Preserve existing userIds when updating names
+    team.players = slots.map((slot, i) => ({
+      name: slot.name,
+      userId: team.players[i]?.userId ?? null,
+    }));
+    team.name = slots.map((p) => p.name).join(' / ');
   } else {
     if (!hasName && !hasPlayerNames) {
       return res.status(400).json({ message: 'Debe enviar nombre de equipo o jugadores' });
@@ -209,18 +223,19 @@ const updateTeam = async (req, res) => {
     }
 
     if (hasPlayerNames) {
-      const pNames = normalizePlayerNames(req.body.playerNames);
-      if (pNames.length > teamSize) {
+      const slots = buildPlayerSlots(req.body.playerNames);
+      if (slots.length > teamSize) {
         return res.status(400).json({ message: `No puede haber más de ${teamSize} jugadores` });
       }
-
-      team.playerNames = pNames;
-      team.players = (Array.isArray(team.players) ? team.players : []).slice(0, pNames.length);
+      // Preserve userIds for slots that remain
+      team.players = slots.map((slot, i) => ({
+        name: slot.name,
+        userId: team.players[i]?.userId ?? null,
+      }));
     }
   }
 
   await team.save();
-  await team.populate('players', 'name email');
   res.json(team);
 };
 

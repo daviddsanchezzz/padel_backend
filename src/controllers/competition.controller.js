@@ -54,8 +54,9 @@ const getCompetitions = async (req, res) => {
 };
 
 const getPlayerCompetitions = async (req, res) => {
-  const teams = await Team.find({ players: req.user._id })
-    .populate({ path: 'competition', select: 'name type sport status seasons organizer', populate: [{ path: 'organizer', select: 'name' }, { path: 'sport', select: 'name slug' }] })
+  // organizer is now a Better Auth string ID — no populate possible, it's returned as-is
+  const teams = await Team.find({ 'players.userId': req.user.id })
+    .populate({ path: 'competition', select: 'name type sport status seasons organizer', populate: { path: 'sport', select: 'name slug' } })
     .populate('division', 'name');
   const competitions = [...new Map(teams.map(t => [t.competition._id.toString(), t.competition])).values()];
   res.json(competitions);

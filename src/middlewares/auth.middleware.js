@@ -1,29 +1,64 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { fromNodeHeaders } = require('better-auth/node');
+const { auth } = require('../lib/auth');
 
+/**
+ * Populates req.user and req.session from the Better Auth session cookie/token.
+ * Exposes both `id` (BA string) and `_id` (alias) so existing controllers don't break.
+ */
 const authenticate = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'No token provided' });
-  }
-
-  const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(401).json({ message: 'User not found' });
-    req.user = user;
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) return res.status(401).json({ message: 'Unauthorized' });
+
+    // Alias _id → id so existing code using req.user._id keeps working.
+    // Both are the same string — Mongoose auto-casts strings to ObjectId when querying.
+    req.user = { ...session.user, _id: session.user.id };
+    req.session = session.session;
     next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Invalid or expired token' });
+  } catch {
+    return res.status(401).json({ message: 'Unauthorized' });
   }
 };
 
+/**
+ * Global role check — requires user.role === 'organizer'.
+ * Use requireOrgRole for organization-scoped permission checks instead.
+ */
 const requireOrganizer = (req, res, next) => {
-  if (req.user.role !== 'organizer') {
+  if (req.user?.role !== 'organizer') {
     return res.status(403).json({ message: 'Organizer access required' });
   }
   next();
 };
 
-module.exports = { authenticate, requireOrganizer };
+/**
+ * Organization-scoped role check.
+ * Reads organizationId from req.params or req.body.
+ * roles: array of Better Auth org roles, e.g. ['owner', 'admin']
+ */
+const requireOrgRole = (roles) => async (req, res, next) => {
+  const organizationId = req.params.organizationId || req.body.organizationId;
+  if (!organizationId) {
+    return res.status(400).json({ message: 'organizationId is required' });
+  }
+
+  try {
+    const mongoose = require('mongoose');
+    const member = await mongoose.connection.db
+      .collection('member')
+      .findOne({ organizationId, userId: req.user.id });
+
+    if (!member || !roles.includes(member.role)) {
+      return res.status(403).json({ message: 'Insufficient organization permissions' });
+    }
+
+    req.orgMember = member;
+    next();
+  } catch {
+    return res.status(500).json({ message: 'Authorization check failed' });
+  }
+};
+
+module.exports = { authenticate, requireOrganizer, requireOrgRole };

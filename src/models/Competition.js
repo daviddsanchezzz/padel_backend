@@ -17,10 +17,15 @@ const competitionSchema = new mongoose.Schema(
       ref: 'Sport',
       required: true,
     },
+    // Better Auth user ID (string) of the competition creator
     organizer: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true,
+    },
+    // Better Auth organization ID — optional, links competition to a club/entity
+    organization: {
+      type: String,
+      default: null,
     },
     seasons: [
       {

@@ -178,7 +178,7 @@ const getDivisionBracket = async (req, res) => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const getPlayerTeam = async (userId, teamAId, teamBId) => {
   const teams = await Team.find({ _id: { $in: [teamAId, teamBId] } });
-  return teams.find(t => t.players.some(p => p?.toString() === userId.toString())) || null;
+  return teams.find((t) => t.players.some((p) => p.userId === userId)) || null;
 };
 
 const isValidDateString = (value) => {
@@ -212,15 +212,20 @@ const finaliseMatch = async (match, result, scoringType) => {
 const normaliseEventsPayload = (events) => Array.isArray(events) ? events : [];
 
 const ensurePlayerBelongsToTeam = (team, playerName, playerSlot) => {
-  const names = Array.isArray(team.playerNames) ? team.playerNames : [];
   if (!playerName || !playerName.trim()) return { ok: false, message: 'El jugador es obligatorio' };
   const trimmed = playerName.trim();
-  const matchedIndex = names.findIndex((n) => (n || '').trim() === trimmed);
+  const matchedIndex = (team.players || []).findIndex((p) => (p.name || '').trim() === trimmed);
   if (matchedIndex < 0) return { ok: false, message: `Jugador "${trimmed}" no pertenece al equipo ${team.name}` };
   if (playerSlot != null && Number(playerSlot) !== matchedIndex) {
     return { ok: false, message: `Slot de jugador invalido para ${trimmed}` };
   }
-  return { ok: true, slot: matchedIndex, playerName: trimmed, playerId: team.players?.[matchedIndex] || null };
+  return {
+    ok: true,
+    slot: matchedIndex,
+    playerName: trimmed,
+    // userId is optional — null if the slot hasn't been claimed by a registered user
+    playerId: team.players[matchedIndex]?.userId || null,
+  };
 };
 
 const recalculateMatchFromEvents = async (match) => {
@@ -499,7 +504,7 @@ const disputeResult = async (req, res) => {
 
 // ── Player matches ────────────────────────────────────────────────────────────
 const getPlayerMatches = async (req, res) => {
-  const teams = await Team.find({ players: req.user._id });
+  const teams = await Team.find({ 'players.userId': req.user.id });
   const teamIds = teams.map((t) => t._id);
 
   const matches = await populateMatch(
