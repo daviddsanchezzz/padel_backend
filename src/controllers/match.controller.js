@@ -188,6 +188,7 @@ const isValidDateString = (value) => {
 };
 
 const isValidTimeString = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+const isValidDateTimeLocal = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
 
 const assertCanEditMatch = async (user, match) => {
   const isOrganizer = match.competition.organizer?.toString() === user._id.toString();
@@ -241,22 +242,44 @@ const updateMatchSchedule = async (req, res) => {
   }
 
   const location = typeof req.body.location === 'string' ? req.body.location.trim() : '';
+  const dateTime = typeof req.body.dateTime === 'string' ? req.body.dateTime.trim() : '';
   const matchDate = typeof req.body.date === 'string' ? req.body.date.trim() : '';
   const matchTime = typeof req.body.time === 'string' ? req.body.time.trim() : '';
 
   if (location.length > 140) {
     return res.status(400).json({ message: 'La ubicacion no puede superar 140 caracteres' });
   }
-  if (matchDate && !isValidDateString(matchDate)) {
-    return res.status(400).json({ message: 'Fecha invalida (formato: YYYY-MM-DD)' });
-  }
-  if (matchTime && !isValidTimeString(matchTime)) {
-    return res.status(400).json({ message: 'Hora invalida (formato: HH:mm)' });
+  let nextDate = '';
+  let nextTime = '';
+  let nextScheduledDate = null;
+
+  if (dateTime) {
+    if (!isValidDateTimeLocal(dateTime)) {
+      return res.status(400).json({ message: 'Fecha y hora invalida (formato: YYYY-MM-DDTHH:mm)' });
+    }
+    const parsed = new Date(dateTime);
+    if (Number.isNaN(parsed.getTime())) {
+      return res.status(400).json({ message: 'Fecha y hora invalida' });
+    }
+    nextDate = dateTime.slice(0, 10);
+    nextTime = dateTime.slice(11, 16);
+    nextScheduledDate = parsed;
+  } else {
+    if (matchDate && !isValidDateString(matchDate)) {
+      return res.status(400).json({ message: 'Fecha invalida (formato: YYYY-MM-DD)' });
+    }
+    if (matchTime && !isValidTimeString(matchTime)) {
+      return res.status(400).json({ message: 'Hora invalida (formato: HH:mm)' });
+    }
+    nextDate = matchDate;
+    nextTime = matchTime;
+    nextScheduledDate = (nextDate && nextTime) ? new Date(`${nextDate}T${nextTime}`) : null;
   }
 
   match.location = location;
-  match.matchDate = matchDate;
-  match.matchTime = matchTime;
+  match.matchDate = nextDate;
+  match.matchTime = nextTime;
+  match.scheduledDate = nextScheduledDate;
   await match.save();
 
   const populated = await populateMatch(Match.findById(match._id));
