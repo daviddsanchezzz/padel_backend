@@ -70,7 +70,7 @@ const getCompetition = async (req, res) => {
 };
 
 const createCompetition = async (req, res) => {
-  const { name, type, sportId, description, settings, season } = req.body;
+  const { name, type, sportId, description, settings, season, organizationId } = req.body;
 
   if (!name)    return res.status(400).json({ message: 'Name is required' });
   if (!type)    return res.status(400).json({ message: 'Type is required (league | tournament)' });
@@ -116,6 +116,7 @@ const createCompetition = async (req, res) => {
     type,
     sport: sportId,
     organizer: req.user._id,
+    organization: organizationId || null,
     seasons: [{ name: season?.trim() || 'Temporada 1', isActive: true }],
     description,
     settings: mergedSettings,
