@@ -181,6 +181,14 @@ const getPlayerTeam = async (userId, teamAId, teamBId) => {
   return teams.find(t => t.players.some(p => p?.toString() === userId.toString())) || null;
 };
 
+const isValidDateString = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+};
+
+const isValidTimeString = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+
 const assertCanEditMatch = async (user, match) => {
   const isOrganizer = match.competition.organizer?.toString() === user._id.toString();
   if (isOrganizer) return { allowed: true, isOrganizer: true, userTeam: null };
@@ -221,6 +229,38 @@ const recalculateMatchFromEvents = async (match) => {
   const scoreA = goals.filter((e) => toIdString(e.team) === teamAId).length;
   const scoreB = goals.filter((e) => toIdString(e.team) === teamBId).length;
   await finaliseMatch(match, { goals: { a: scoreA, b: scoreB } }, 'goals');
+};
+
+const updateMatchSchedule = async (req, res) => {
+  const match = await Match.findById(req.params.id)
+    .populate({ path: 'competition', select: 'organizer sport settings name type', populate: { path: 'sport', select: 'scoringType slug' } });
+  if (!match) return res.status(404).json({ message: 'Match not found' });
+
+  if (match.competition?.organizer?.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ message: 'Solo el organizador puede programar partidos' });
+  }
+
+  const location = typeof req.body.location === 'string' ? req.body.location.trim() : '';
+  const matchDate = typeof req.body.date === 'string' ? req.body.date.trim() : '';
+  const matchTime = typeof req.body.time === 'string' ? req.body.time.trim() : '';
+
+  if (location.length > 140) {
+    return res.status(400).json({ message: 'La ubicacion no puede superar 140 caracteres' });
+  }
+  if (matchDate && !isValidDateString(matchDate)) {
+    return res.status(400).json({ message: 'Fecha invalida (formato: YYYY-MM-DD)' });
+  }
+  if (matchTime && !isValidTimeString(matchTime)) {
+    return res.status(400).json({ message: 'Hora invalida (formato: HH:mm)' });
+  }
+
+  match.location = location;
+  match.matchDate = matchDate;
+  match.matchTime = matchTime;
+  await match.save();
+
+  const populated = await populateMatch(Match.findById(match._id));
+  res.json(populated);
 };
 
 // ── Record result (shared for league + tournament) ───────────────────────────
@@ -455,6 +495,7 @@ module.exports = {
   generateDivisionBracket,
   getDivisionBracket,
   recordResult,
+  updateMatchSchedule,
   getMatchEvents,
   recordMatchEvents,
   getCompetitionPlayerStats,

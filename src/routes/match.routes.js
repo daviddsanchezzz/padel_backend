@@ -9,6 +9,7 @@ const {
   generateDivisionBracket,
   getDivisionBracket,
   recordResult,
+  updateMatchSchedule,
   getMatchEvents,
   recordMatchEvents,
   getCompetitionPlayerStats,
@@ -34,6 +35,7 @@ router.get('/competitions/:competitionId/bracket',           getTournamentBracke
 
 // Shared
 router.get('/matches/:id',          getMatchById);
+router.put('/matches/:id/schedule', updateMatchSchedule);
 router.put('/matches/:id/result',   recordResult);
 router.get('/matches/:id/events',   getMatchEvents);
 router.put('/matches/:id/events',   recordMatchEvents);

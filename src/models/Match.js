@@ -42,6 +42,20 @@ const matchSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    location: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 140,
+    },
+    matchDate: {
+      type: String,
+      default: '',
+    },
+    matchTime: {
+      type: String,
+      default: '',
+    },
     status: {
       type: String,
       enum: ['pending', 'awaiting_confirmation', 'played', 'cancelled'],
