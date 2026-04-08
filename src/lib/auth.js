@@ -15,6 +15,7 @@ const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
+    minPasswordLength: 6,
   },
 
   socialProviders: {
@@ -47,6 +48,16 @@ const auth = betterAuth({
   trustedOrigins: [
     process.env.FRONTEND_URL || 'http://localhost:5173',
   ],
+
+  advanced: {
+    // Required for cross-origin cookies (Vercel frontend ↔ Render backend).
+    // SameSite=None + Secure allows the browser to send the session cookie
+    // on cross-origin requests with credentials:include.
+    defaultCookieAttributes: {
+      sameSite: 'none',
+      secure: true,
+    },
+  },
 });
 
 module.exports = { auth };
