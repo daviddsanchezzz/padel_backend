@@ -23,7 +23,7 @@ const createDivisionTeam = async (req, res) => {
   }
 
   // Use division's teamSize if set, otherwise use sport's teamSize
-  const teamSize = division.teamSize ?? division.competition.sport.teamSize || 1;
+  const teamSize = division.teamSize ?? (division.competition.sport.teamSize || 1);
   let teamName = name;
   let pNames = [];
 

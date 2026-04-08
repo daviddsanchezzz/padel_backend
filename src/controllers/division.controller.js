@@ -22,16 +22,27 @@ const getDivision = async (req, res) => {
 
 const createDivision = async (req, res) => {
   const { competitionId } = req.params;
-  const { name, order } = req.body;
+  const { name, order, teamSize } = req.body;
   if (!name) return res.status(400).json({ message: 'Division name is required' });
 
   const competition = await Competition.findOne({ _id: competitionId, organizer: req.user._id });
   if (!competition) return res.status(404).json({ message: 'Competition not found' });
+  
+  // Get active season name
+  const activeSeason = competition.seasons.find((s) => s.isActive);
+  const seasonName = activeSeason?.name || 'Temporada 1';
+  
   // Auto-assign order = next after last existing division
   const lastDiv = await Division.findOne({ competition: competitionId }).sort({ order: -1 });
   const nextOrder = order !== undefined ? order : (lastDiv ? lastDiv.order + 1 : 0);
 
-  const division = await Division.create({ name, competition: competitionId, order: nextOrder });
+  const division = await Division.create({ 
+    name, 
+    competition: competitionId, 
+    order: nextOrder,
+    seasonName,
+    teamSize: teamSize || null,
+  });
   res.status(201).json(division);
 };
 
