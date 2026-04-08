@@ -45,6 +45,10 @@ const organizationSchema = new mongoose.Schema(
     logo: {
       type: String, // URL
     },
+    primaryColor: {
+      type: String,
+      default: null,
+    },
     type: {
       type: String,
       enum: ['club', 'organizer', 'federation'],

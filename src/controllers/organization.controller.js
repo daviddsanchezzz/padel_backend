@@ -132,6 +132,7 @@ const getPublicOrganization = async (req, res) => {
     location: org.location,
     type: org.type,
     logo: org.logo,
+    primaryColor: org.primaryColor,
     activeCompetitions: competitions,
     createdAt: org.createdAt,
   });
@@ -151,6 +152,7 @@ const updateOrganization = async (req, res) => {
   if (type !== undefined) org.type = type;
   if (logo !== undefined) org.logo = logo;
   if (isPublic !== undefined) org.isPublic = isPublic;
+  if (req.body.primaryColor !== undefined) org.primaryColor = req.body.primaryColor;
 
   await org.save();
   res.json(org);
@@ -175,7 +177,7 @@ const getPublicCompetition = async (req, res) => {
     }).sort({ order: 1, createdAt: 1 });
   }
 
-  res.json({ org: { id: org._id, name: org.name }, competition, divisions });
+  res.json({ org: { id: org._id, name: org.name, logo: org.logo, primaryColor: org.primaryColor }, competition, divisions });
 };
 
 // ── GET /api/organizations/:orgId/divisions/:divId/public ────────────────────
@@ -226,7 +228,7 @@ const getPublicDivision = async (req, res) => {
   }
 
   res.json({
-    org: { id: org._id, name: org.name, authOrgId: org.authOrgId },
+    org: { id: org._id, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
     division,
     allDivisions,
     teams,
