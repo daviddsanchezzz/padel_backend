@@ -48,21 +48,54 @@ const createOrganization = async (req, res) => {
 
 // ── GET /api/organizations ───────────────────────────────────────────────────
 const getMyOrganizations = async (req, res) => {
-  // Query Better Auth's member collection directly — avoids a round-trip through the API
-  const members = await mongoose.connection.db
-    .collection('member')
-    .find({ userId: req.user.id })
-    .toArray();
+  const userKeys = [req.user?.id, req.user?._id, req.user?.email]
+    .filter(Boolean)
+    .map((v) => String(v));
 
-  const authOrgIds = members.map((m) => m.organizationId);
-  const orgs = await Organization.find({ authOrgId: { $in: authOrgIds } }).sort({ createdAt: -1 });
-  res.json(orgs);
+  // Primary: organizations owned by this user in our domain model.
+  // We match by several keys to support legacy records where ownerId may differ.
+  const owned = await Organization.find({ ownerId: { $in: userKeys } }).sort({ createdAt: -1 });
+
+  // Secondary: organizations where user is a Better Auth member.
+  // This is best-effort; if member lookup fails, we still return owned orgs.
+  let memberOrgs = [];
+  try {
+    const members = await mongoose.connection.db
+      .collection('member')
+      .find({ userId: req.user.id })
+      .toArray();
+    const memberAuthOrgIds = [...new Set(members.map((m) => m.organizationId).filter(Boolean))];
+    if (memberAuthOrgIds.length > 0) {
+      memberOrgs = await Organization.find({ authOrgId: { $in: memberAuthOrgIds } });
+    }
+  } catch {
+    memberOrgs = [];
+  }
+
+  // Merge + dedupe by authOrgId (or _id fallback), keep newest first.
+  const merged = [...owned, ...memberOrgs];
+  const seen = new Set();
+  const deduped = merged.filter((org) => {
+    const key = org.authOrgId || String(org._id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  res.json(deduped);
 };
 
 // ── GET /api/organizations/:id ───────────────────────────────────────────────
 const getOrganization = async (req, res) => {
   const org = await Organization.findById(req.params.id);
   if (!org) return res.status(404).json({ message: 'Organization not found' });
+
+  const userKeys = [req.user?.id, req.user?._id, req.user?.email]
+    .filter(Boolean)
+    .map((v) => String(v));
+  if (userKeys.includes(String(org.ownerId))) {
+    return res.json({ ...org.toObject(), memberRole: 'owner' });
+  }
 
   const member = await mongoose.connection.db
     .collection('member')
