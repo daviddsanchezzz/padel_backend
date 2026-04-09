@@ -117,7 +117,7 @@ const getPublicOrganization = async (req, res) => {
 
   const competitions = await Competition.find({
     organization: org.authOrgId,
-    status: { $in: ['active', 'draft'] },
+    status: 'active',
   })
     .select('name type status seasons sport createdAt')
     .populate('sport', 'name slug')
