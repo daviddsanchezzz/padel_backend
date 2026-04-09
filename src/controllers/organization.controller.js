@@ -146,7 +146,8 @@ const updateOrganization = async (req, res) => {
     return res.status(403).json({ message: 'Only the owner can update the organization' });
   }
 
-  const { description, location, type, logo, isPublic } = req.body;
+  const { name, description, location, type, logo, isPublic } = req.body;
+  if (name?.trim()) org.name = name.trim();
   if (description !== undefined) org.description = description;
   if (location !== undefined) org.location = location;
   if (type !== undefined) org.type = type;
