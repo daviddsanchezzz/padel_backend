@@ -85,6 +85,17 @@ const matchSchema = new mongoose.Schema(
       ref: 'Team',
       default: null,
     },
+    // Phase within a tournament: 'group' or 'bracket' (default)
+    phase: {
+      type: String,
+      enum: ['group', 'bracket'],
+      default: 'bracket',
+    },
+    // Group name (e.g. 'A', 'B') — only set for group-phase matches
+    group: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

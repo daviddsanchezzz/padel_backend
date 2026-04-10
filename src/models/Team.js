@@ -38,6 +38,11 @@ const teamSchema = new mongoose.Schema(
       required: true,
       default: 'Temporada 1',
     },
+    // Group assignment for group-stage tournaments (e.g. 'A', 'B', 'C')
+    group: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

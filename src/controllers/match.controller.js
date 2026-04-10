@@ -6,6 +6,7 @@ const Division = require('../models/Division');
 const { generateRoundRobin } = require('../services/matchGenerator.service');
 const { generateBracket, advanceWinner } = require('../services/bracket.service');
 const { determineWinner } = require('../services/score.service');
+const { createGroups, generateGroupMatches, computeStandings } = require('../services/group.service');
 
 const populateMatch = (query) =>
   query
@@ -143,27 +144,71 @@ const generateDivisionBracket = async (req, res) => {
     return res.status(403).json({ message: 'Forbidden' });
   }
 
-  const teams = await Team.find({ division: divisionId });
-  if (teams.length < 2) return res.status(400).json({ message: 'At least 2 teams needed' });
+  const settings = division.competition.settings || {};
+  const tournamentFormat = settings.tournamentFormat || 'elimination';
 
-  await Match.deleteMany({ division: divisionId });
+  let seededTeamIds;
 
-  const sorted = [...teams].sort((a, b) => {
-    if (a.seed && b.seed) return a.seed - b.seed;
-    if (a.seed) return -1;
-    if (b.seed) return 1;
-    return 0;
-  });
+  if (tournamentFormat === 'groups_and_elimination') {
+    // Seed from group standings: 1A, 1B, ..., 2A, 2B, ...
+    const teamsAdvancing = Number(settings.teamsAdvancing) || 2;
+    const allTeams = await Team.find({ division: divisionId, group: { $ne: null } });
+    const groupMatches = await Match.find({ division: divisionId, phase: 'group', status: 'played' }).lean();
+    const scoringType = division.competition.sport?.scoringType || 'sets';
 
-  const docs = generateBracket(sorted.map((t) => t._id), division.competition._id, divisionId);
+    // Group teams by their group letter
+    const byGroup = {};
+    for (const team of allTeams) {
+      if (!byGroup[team.group]) byGroup[team.group] = [];
+      byGroup[team.group].push(team);
+    }
+
+    const groupNames = Object.keys(byGroup).sort();
+    // Compute standings per group and take top teamsAdvancing
+    const positionBuckets = []; // positionBuckets[0] = [1st of A, 1st of B, ...]
+    for (const name of groupNames) {
+      const groupTeams = byGroup[name];
+      const groupMatchesForThisGroup = groupMatches.filter((m) => m.group === name);
+      const standings = computeStandings(groupTeams, groupMatchesForThisGroup, scoringType);
+      standings.slice(0, teamsAdvancing).forEach((entry, pos) => {
+        if (!positionBuckets[pos]) positionBuckets[pos] = [];
+        positionBuckets[pos].push(entry.teamId);
+      });
+    }
+
+    seededTeamIds = positionBuckets.flat();
+
+    if (seededTeamIds.length < 2) {
+      return res.status(400).json({ message: 'No hay suficientes equipos clasificados. Completa la fase de grupos primero.' });
+    }
+
+    // Only remove bracket-phase matches
+    await Match.deleteMany({ division: divisionId, phase: 'bracket' });
+  } else {
+    const teams = await Team.find({ division: divisionId });
+    if (teams.length < 2) return res.status(400).json({ message: 'At least 2 teams needed' });
+
+    await Match.deleteMany({ division: divisionId });
+
+    seededTeamIds = [...teams].sort((a, b) => {
+      if (a.seed && b.seed) return a.seed - b.seed;
+      if (a.seed) return -1;
+      if (b.seed) return 1;
+      return 0;
+    }).map((t) => t._id);
+  }
+
+  const docs = generateBracket(seededTeamIds, division.competition._id, divisionId)
+    .map((d) => ({ ...d, phase: 'bracket' }));
   await Match.insertMany(docs);
 
-  res.status(201).json({ message: 'Bracket generated', teams: teams.length });
+  res.status(201).json({ message: 'Bracket generated', teams: seededTeamIds.length });
 };
 
 const getDivisionBracket = async (req, res) => {
   const matches = await populateMatch(
-    Match.find({ division: req.params.divisionId }).sort({ round: 1, bracketPosition: 1 })
+    Match.find({ division: req.params.divisionId, phase: { $in: ['bracket', null] } })
+      .sort({ round: 1, bracketPosition: 1 })
   );
 
   const byRound = {};
@@ -173,6 +218,69 @@ const getDivisionBracket = async (req, res) => {
   });
 
   res.json(byRound);
+};
+
+// ── Division group stage ───────────────────────────────────────────────────────
+const generateDivisionGroups = async (req, res) => {
+  const { divisionId } = req.params;
+
+  const division = await Division.findById(divisionId).populate({ path: 'competition', populate: { path: 'sport' } });
+  if (!division) return res.status(404).json({ message: 'Division not found' });
+  if (division.competition.organizer.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  const settings = division.competition.settings || {};
+  const teamsPerGroup = Number(settings.teamsPerGroup) || 4;
+
+  const teams = await Team.find({ division: divisionId });
+  if (teams.length < 4) return res.status(400).json({ message: 'Necesitas al menos 4 equipos para la fase de grupos' });
+
+  // Delete existing group-phase matches and reset group assignments
+  await Match.deleteMany({ division: divisionId, phase: 'group' });
+  await Team.updateMany({ division: divisionId }, { group: null });
+
+  const groups = createGroups(teams.map((t) => t._id.toString()), teamsPerGroup);
+
+  // Assign groups to teams
+  for (const group of groups) {
+    await Team.updateMany({ _id: { $in: group.teamIds } }, { group: group.name });
+  }
+
+  const docs = generateGroupMatches(groups, division.competition._id, divisionId);
+  await Match.insertMany(docs);
+
+  res.status(201).json({ message: 'Groups generated', groupCount: groups.length, matchCount: docs.length });
+};
+
+const getDivisionGroups = async (req, res) => {
+  const { divisionId } = req.params;
+
+  const division = await Division.findById(divisionId).populate({ path: 'competition', populate: { path: 'sport' } });
+  if (!division) return res.status(404).json({ message: 'Division not found' });
+
+  const scoringType = division.competition?.sport?.scoringType || 'sets';
+
+  const allTeams = await Team.find({ division: divisionId, group: { $ne: null } });
+  const groupMatches = await populateMatch(
+    Match.find({ division: divisionId, phase: 'group' }).sort({ group: 1, round: 1 })
+  );
+
+  const byGroup = {};
+  for (const team of allTeams) {
+    if (!byGroup[team.group]) byGroup[team.group] = { teams: [], matches: [], standings: [] };
+    byGroup[team.group].teams.push(team);
+  }
+  for (const match of groupMatches) {
+    const g = match.group;
+    if (g && byGroup[g]) byGroup[g].matches.push(match);
+  }
+  for (const name of Object.keys(byGroup)) {
+    byGroup[name].standings = computeStandings(byGroup[name].teams, byGroup[name].matches, scoringType);
+  }
+
+  const result = Object.keys(byGroup).sort().map((name) => ({ name, ...byGroup[name] }));
+  res.json(result);
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -522,6 +630,8 @@ module.exports = {
   getTournamentBracket,
   generateDivisionBracket,
   getDivisionBracket,
+  generateDivisionGroups,
+  getDivisionGroups,
   recordResult,
   updateMatchSchedule,
   getMatchEvents,

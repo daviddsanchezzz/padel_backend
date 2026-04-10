@@ -8,6 +8,8 @@ const {
   getTournamentBracket,
   generateDivisionBracket,
   getDivisionBracket,
+  generateDivisionGroups,
+  getDivisionGroups,
   recordResult,
   updateMatchSchedule,
   getMatchEvents,
@@ -28,6 +30,10 @@ router.post('/divisions/:divisionId/matches/generate', requireOrganizer, generat
 // Tournament categories (division-level bracket)
 router.post('/divisions/:divisionId/bracket/generate', requireOrganizer, generateDivisionBracket);
 router.get('/divisions/:divisionId/bracket',           getDivisionBracket);
+
+// Tournament group stage
+router.post('/divisions/:divisionId/groups/generate', requireOrganizer, generateDivisionGroups);
+router.get('/divisions/:divisionId/groups',           getDivisionGroups);
 
 // Tournament
 router.post('/competitions/:competitionId/bracket/generate', requireOrganizer, generateTournamentBracket);
