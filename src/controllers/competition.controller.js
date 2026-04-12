@@ -40,6 +40,26 @@ const normalizeMaxTeamsPerDivision = (settings = {}) => {
   return parsed;
 };
 
+const isValidDateString = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+};
+
+const normalizeCompetitionMeta = ({ location, startDate }) => {
+  const nextLocation = typeof location === 'string' ? location.trim() : '';
+  const nextStartDate = typeof startDate === 'string' ? startDate.trim() : '';
+
+  if (nextLocation.length > 140) {
+    return { ok: false, message: 'La ubicacion no puede superar 140 caracteres' };
+  }
+  if (nextStartDate && !isValidDateString(nextStartDate)) {
+    return { ok: false, message: 'Fecha invalida (formato: YYYY-MM-DD)' };
+  }
+
+  return { ok: true, location: nextLocation, startDate: nextStartDate };
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const autoNextSeason = (season) => {
   if (!season) return 'Temporada 2';
@@ -79,7 +99,7 @@ const getCompetition = async (req, res) => {
 };
 
 const createCompetition = async (req, res) => {
-  const { name, type, sportId, description, settings, season, organizationId } = req.body;
+  const { name, type, sportId, description, settings, season, organizationId, location, startDate } = req.body;
 
   if (!name)    return res.status(400).json({ message: 'Name is required' });
   if (!type)    return res.status(400).json({ message: 'Type is required (league | tournament)' });
@@ -127,6 +147,11 @@ const createCompetition = async (req, res) => {
     return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
   }
 
+  const meta = normalizeCompetitionMeta({ location, startDate });
+  if (!meta.ok) {
+    return res.status(400).json({ message: meta.message });
+  }
+
   const competition = await Competition.create({
     name,
     type,
@@ -135,6 +160,8 @@ const createCompetition = async (req, res) => {
     organization: organizationId || null,
     seasons: [{ name: season?.trim() || 'Temporada 1', isActive: true }],
     description,
+    location: meta.location,
+    startDate: meta.startDate,
     settings: mergedSettings,
   });
 
@@ -145,6 +172,18 @@ const createCompetition = async (req, res) => {
 const updateCompetition = async (req, res) => {
   const existing = await Competition.findOne({ _id: req.params.id, organizer: req.user._id }).populate('sport');
   if (!existing) return res.status(404).json({ message: 'Competition not found' });
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'location') || Object.prototype.hasOwnProperty.call(req.body, 'startDate')) {
+    const meta = normalizeCompetitionMeta({
+      location: Object.prototype.hasOwnProperty.call(req.body, 'location') ? req.body.location : existing.location,
+      startDate: Object.prototype.hasOwnProperty.call(req.body, 'startDate') ? req.body.startDate : existing.startDate,
+    });
+    if (!meta.ok) {
+      return res.status(400).json({ message: meta.message });
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'location')) req.body.location = meta.location;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'startDate')) req.body.startDate = meta.startDate;
+  }
 
   if (req.body?.settings) {
     const mergedSettings = { ...(existing.settings || {}), ...req.body.settings };
@@ -302,5 +341,4 @@ module.exports = {
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason,
 };
-
 
