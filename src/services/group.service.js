@@ -75,9 +75,9 @@ const computeStandings = (teams, matches, scoringType) => {
     const id = team._id.toString();
     table[id] = {
       teamId: team._id,
-      teamName: team.name,
-      played: 0, won: 0, drawn: 0, lost: 0,
-      points: 0, goalsFor: 0, goalsAgainst: 0,
+      team,                         // full team object (for StandingsTable compat)
+      played: 0, won: 0, drawn: 0, lost: 0, points: 0,
+      setsWon: 0, setsLost: 0,     // sets or goals "for/against"
     };
   }
 
@@ -93,32 +93,44 @@ const computeStandings = (teams, matches, scoringType) => {
     table[bId].played++;
 
     if (side === 'A') {
-      table[aId].won++;    table[aId].points += 3;
+      table[aId].won++;   table[aId].points += 3;
       table[bId].lost++;
     } else if (side === 'B') {
-      table[bId].won++;    table[bId].points += 3;
+      table[bId].won++;   table[bId].points += 3;
       table[aId].lost++;
     } else {
       table[aId].drawn++; table[aId].points += 1;
       table[bId].drawn++; table[bId].points += 1;
     }
 
-    if (scoringType === 'goals' && match.result?.goals) {
+    if (scoringType === 'sets' && match.result?.sets) {
+      let sA = 0, sB = 0;
+      for (const s of match.result.sets) {
+        if (s.a > s.b) sA++; else if (s.b > s.a) sB++;
+      }
+      table[aId].setsWon  += sA; table[aId].setsLost += sB;
+      table[bId].setsWon  += sB; table[bId].setsLost += sA;
+    } else if (scoringType === 'goals' && match.result?.goals) {
       const { a, b } = match.result.goals;
-      table[aId].goalsFor += Number(a) || 0;
-      table[aId].goalsAgainst += Number(b) || 0;
-      table[bId].goalsFor += Number(b) || 0;
-      table[bId].goalsAgainst += Number(a) || 0;
+      table[aId].setsWon  += Number(a) || 0; table[aId].setsLost += Number(b) || 0;
+      table[bId].setsWon  += Number(b) || 0; table[bId].setsLost += Number(a) || 0;
     }
   }
 
-  return Object.values(table).sort((a, b) => {
+  const sorted = Object.values(table).sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;
-    const gdB = b.goalsFor - b.goalsAgainst;
-    const gdA = a.goalsFor - a.goalsAgainst;
+    const gdB = b.setsWon - b.setsLost;
+    const gdA = a.setsWon - a.setsLost;
     if (gdB !== gdA) return gdB - gdA;
-    return b.goalsFor - a.goalsFor;
+    return b.setsWon - a.setsWon;
   });
+
+  // Add position and setDiff for StandingsTable compat
+  return sorted.map((row, i) => ({
+    ...row,
+    position: i + 1,
+    setDiff: row.setsWon - row.setsLost,
+  }));
 };
 
 module.exports = { createGroups, generateGroupMatches, computeStandings };
