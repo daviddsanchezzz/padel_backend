@@ -182,11 +182,23 @@ const generateDivisionBracket = async (req, res) => {
       return res.status(400).json({ message: 'No hay suficientes equipos clasificados. Completa la fase de grupos primero.' });
     }
 
+    // Block if any bracket match already has a result
+    const playedBracketMatch = await Match.findOne({ division: divisionId, phase: 'bracket', status: 'played' });
+    if (playedBracketMatch) {
+      return res.status(400).json({ message: 'No se puede regenerar el bracket: ya hay partidos eliminatorios con resultado registrado.' });
+    }
+
     // Only remove bracket-phase matches
     await Match.deleteMany({ division: divisionId, phase: 'bracket' });
   } else {
     const teams = await Team.find({ division: divisionId });
     if (teams.length < 2) return res.status(400).json({ message: 'At least 2 teams needed' });
+
+    // Block if any match already has a result
+    const playedMatch = await Match.findOne({ division: divisionId, status: 'played' });
+    if (playedMatch) {
+      return res.status(400).json({ message: 'No se puede regenerar el bracket: ya hay partidos con resultado registrado.' });
+    }
 
     await Match.deleteMany({ division: divisionId });
 
@@ -235,6 +247,12 @@ const generateDivisionGroups = async (req, res) => {
 
   const teams = await Team.find({ division: divisionId });
   if (teams.length < 4) return res.status(400).json({ message: 'Necesitas al menos 4 equipos para la fase de grupos' });
+
+  // Block if any group match already has a result
+  const playedGroupMatch = await Match.findOne({ division: divisionId, phase: 'group', status: 'played' });
+  if (playedGroupMatch) {
+    return res.status(400).json({ message: 'No se puede rehacer el sorteo: ya hay partidos de grupos con resultado registrado.' });
+  }
 
   // Delete existing group-phase matches and reset group assignments
   await Match.deleteMany({ division: divisionId, phase: 'group' });
