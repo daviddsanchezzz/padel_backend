@@ -198,6 +198,8 @@ const getPublicDivision = async (req, res) => {
   if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Not found' });
 
   const isTournament = competition.type === 'tournament';
+  const tournamentFormat = competition.settings?.tournamentFormat || 'elimination';
+  const isGroupFormat = isTournament && tournamentFormat === 'groups_and_elimination';
 
   const allDivisions = await Division.find({
     competition: competition._id,
@@ -212,15 +214,51 @@ const getPublicDivision = async (req, res) => {
       .populate('teamB', 'name players playerNames')
       .populate('winner', 'name');
 
-  let matches = [], standings = [], bracket = {};
+  let matches = [], standings = [], bracket = {}, groups = [];
+
   if (isTournament) {
-    const raw = await populateMatch(
-      Match.find({ division: division._id }).sort({ round: 1, bracketPosition: 1 })
-    );
-    raw.forEach((m) => {
-      if (!bracket[m.round]) bracket[m.round] = [];
-      bracket[m.round].push(m);
-    });
+    if (isGroupFormat) {
+      // Group-phase matches
+      const { computeStandings } = require('../services/group.service');
+      const scoringType = competition.sport?.scoringType || 'sets';
+
+      const groupMatches = await populateMatch(
+        Match.find({ division: division._id, phase: 'group' }).sort({ group: 1, round: 1 })
+      );
+      const bracketMatches = await populateMatch(
+        Match.find({ division: division._id, phase: 'bracket' }).sort({ round: 1, bracketPosition: 1 })
+      );
+
+      // Build groups
+      const byGroup = {};
+      for (const team of teams) {
+        if (!team.group) continue;
+        if (!byGroup[team.group]) byGroup[team.group] = { teams: [], matches: [] };
+        byGroup[team.group].teams.push(team);
+      }
+      for (const match of groupMatches) {
+        if (match.group && byGroup[match.group]) byGroup[match.group].matches.push(match);
+      }
+      groups = Object.keys(byGroup).sort().map((name) => ({
+        name,
+        teams: byGroup[name].teams,
+        matches: byGroup[name].matches,
+        standings: computeStandings(byGroup[name].teams, byGroup[name].matches, scoringType),
+      }));
+
+      bracketMatches.forEach((m) => {
+        if (!bracket[m.round]) bracket[m.round] = [];
+        bracket[m.round].push(m);
+      });
+    } else {
+      const raw = await populateMatch(
+        Match.find({ division: division._id }).sort({ round: 1, bracketPosition: 1 })
+      );
+      raw.forEach((m) => {
+        if (!bracket[m.round]) bracket[m.round] = [];
+        bracket[m.round].push(m);
+      });
+    }
   } else {
     matches = await populateMatch(
       Match.find({ division: division._id }).sort({ round: 1, bracketPosition: 1 })
@@ -236,6 +274,8 @@ const getPublicDivision = async (req, res) => {
     matches,
     standings,
     bracket,
+    groups,
+    tournamentFormat,
   });
 };
 
