@@ -46,9 +46,10 @@ const isValidDateString = (value) => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 };
 
-const normalizeCompetitionMeta = ({ location, startDate }) => {
+const normalizeCompetitionMeta = ({ location, startDate, endDate }) => {
   const nextLocation = typeof location === 'string' ? location.trim() : '';
   const nextStartDate = typeof startDate === 'string' ? startDate.trim() : '';
+  const nextEndDate = typeof endDate === 'string' ? endDate.trim() : '';
 
   if (nextLocation.length > 140) {
     return { ok: false, message: 'La ubicacion no puede superar 140 caracteres' };
@@ -56,8 +57,14 @@ const normalizeCompetitionMeta = ({ location, startDate }) => {
   if (nextStartDate && !isValidDateString(nextStartDate)) {
     return { ok: false, message: 'Fecha invalida (formato: YYYY-MM-DD)' };
   }
+  if (nextEndDate && !isValidDateString(nextEndDate)) {
+    return { ok: false, message: 'Fecha fin invalida (formato: YYYY-MM-DD)' };
+  }
+  if (nextStartDate && nextEndDate && nextEndDate < nextStartDate) {
+    return { ok: false, message: 'La fecha fin no puede ser menor que la fecha inicio' };
+  }
 
-  return { ok: true, location: nextLocation, startDate: nextStartDate };
+  return { ok: true, location: nextLocation, startDate: nextStartDate, endDate: nextEndDate };
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -99,7 +106,7 @@ const getCompetition = async (req, res) => {
 };
 
 const createCompetition = async (req, res) => {
-  const { name, type, sportId, description, settings, season, organizationId, location, startDate } = req.body;
+  const { name, type, sportId, description, settings, season, organizationId, location, startDate, endDate } = req.body;
 
   if (!name)    return res.status(400).json({ message: 'Name is required' });
   if (!type)    return res.status(400).json({ message: 'Type is required (league | tournament)' });
@@ -147,7 +154,7 @@ const createCompetition = async (req, res) => {
     return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
   }
 
-  const meta = normalizeCompetitionMeta({ location, startDate });
+  const meta = normalizeCompetitionMeta({ location, startDate, endDate });
   if (!meta.ok) {
     return res.status(400).json({ message: meta.message });
   }
@@ -162,6 +169,7 @@ const createCompetition = async (req, res) => {
     description,
     location: meta.location,
     startDate: meta.startDate,
+    endDate: meta.endDate,
     settings: mergedSettings,
   });
 
@@ -173,16 +181,22 @@ const updateCompetition = async (req, res) => {
   const existing = await Competition.findOne({ _id: req.params.id, organizer: req.user._id }).populate('sport');
   if (!existing) return res.status(404).json({ message: 'Competition not found' });
 
-  if (Object.prototype.hasOwnProperty.call(req.body, 'location') || Object.prototype.hasOwnProperty.call(req.body, 'startDate')) {
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, 'location') ||
+    Object.prototype.hasOwnProperty.call(req.body, 'startDate') ||
+    Object.prototype.hasOwnProperty.call(req.body, 'endDate')
+  ) {
     const meta = normalizeCompetitionMeta({
       location: Object.prototype.hasOwnProperty.call(req.body, 'location') ? req.body.location : existing.location,
       startDate: Object.prototype.hasOwnProperty.call(req.body, 'startDate') ? req.body.startDate : existing.startDate,
+      endDate: Object.prototype.hasOwnProperty.call(req.body, 'endDate') ? req.body.endDate : existing.endDate,
     });
     if (!meta.ok) {
       return res.status(400).json({ message: meta.message });
     }
     if (Object.prototype.hasOwnProperty.call(req.body, 'location')) req.body.location = meta.location;
     if (Object.prototype.hasOwnProperty.call(req.body, 'startDate')) req.body.startDate = meta.startDate;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'endDate')) req.body.endDate = meta.endDate;
   }
 
   if (req.body?.settings) {
@@ -341,4 +355,3 @@ module.exports = {
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason,
 };
-

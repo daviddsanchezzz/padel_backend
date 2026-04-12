@@ -57,6 +57,10 @@ const competitionSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    endDate: {
+      type: String,
+      default: '',
+    },
     status: {
       type: String,
       enum: ['draft', 'active', 'finished'],
