@@ -12,6 +12,15 @@ const auth = betterAuth({
   // Explicit db name as fallback — avoids defaulting to 'test' if the URI has no db path.
   database: mongodbAdapter(client.db(process.env.MONGODB_DB_NAME || 'padel')),
 
+  session: {
+    expiresIn: 60 * 60 * 24 * 60,        // 60 días en segundos
+    updateAge: 60 * 60 * 24,              // renueva el token si la sesión tiene más de 1 día
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 60 * 24 * 60,
+    },
+  },
+
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,

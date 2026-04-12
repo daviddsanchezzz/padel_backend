@@ -24,8 +24,8 @@ const createGroups = (teamIds, teamsPerGroup) => {
 
   for (let i = 0; i < numGroups; i++) {
     const groupsLeft = numGroups - i;
-    const teamsLeft = shuffled.length - groups.reduce((sum, g) => sum + g.teamIds.length, 0);
-    const size = Math.ceil(teamsLeft / groupsLeft);
+    // shuffled.length ya refleja los equipos que quedan (splice los elimina)
+    const size = Math.ceil(shuffled.length / groupsLeft);
     const name = String.fromCharCode(65 + i); // A, B, C, D...
     groups.push({ name, teamIds: shuffled.splice(0, size) });
   }
