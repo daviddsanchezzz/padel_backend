@@ -31,6 +31,15 @@ const normaliseResultConfig = (settings = {}) => {
   return { mode, enabledEventTypes };
 };
 
+const normalizeMaxTeamsPerDivision = (settings = {}) => {
+  const raw = settings.maxTeamsPerDivision;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 128) return null;
+  return parsed;
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const autoNextSeason = (season) => {
   if (!season) return 'Temporada 2';
@@ -106,6 +115,13 @@ const createCompetition = async (req, res) => {
     ...(settings || {}),
   };
   mergedSettings.resultConfig = normaliseResultConfig(mergedSettings);
+  const normalizedMaxTeams = normalizeMaxTeamsPerDivision(mergedSettings);
+  if (normalizedMaxTeams === null) {
+    return res.status(400).json({ message: 'El maximo de equipos por division/categoria debe ser un entero entre 0 y 128' });
+  }
+  if (normalizedMaxTeams !== undefined) {
+    mergedSettings.maxTeamsPerDivision = normalizedMaxTeams;
+  }
 
   if (mergedSettings.resultConfig.mode === 'events' && sport.scoringType !== 'goals') {
     return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
@@ -133,6 +149,13 @@ const updateCompetition = async (req, res) => {
   if (req.body?.settings) {
     const mergedSettings = { ...(existing.settings || {}), ...req.body.settings };
     mergedSettings.resultConfig = normaliseResultConfig(mergedSettings);
+    const normalizedMaxTeams = normalizeMaxTeamsPerDivision(mergedSettings);
+    if (normalizedMaxTeams === null) {
+      return res.status(400).json({ message: 'El maximo de equipos por division/categoria debe ser un entero entre 0 y 128' });
+    }
+    if (normalizedMaxTeams !== undefined) {
+      mergedSettings.maxTeamsPerDivision = normalizedMaxTeams;
+    }
     if (mergedSettings.resultConfig.mode === 'events' && existing.sport?.scoringType !== 'goals') {
       return res.status(400).json({ message: 'El modo de eventos detallados solo esta soportado para deportes de goles' });
     }
@@ -279,6 +302,5 @@ module.exports = {
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason,
 };
-
 
 

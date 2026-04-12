@@ -43,6 +43,14 @@ const createDivisionTeam = async (req, res) => {
   const teamSize = resolveTeamSize({ competition: division.competition, division });
   const trimmedName = typeof name === 'string' ? name.trim() : '';
   const slots = buildPlayerSlots(playerNames);
+  const maxTeamsPerDivision = Number(division.competition?.settings?.maxTeamsPerDivision || 0);
+
+  if (maxTeamsPerDivision > 0) {
+    const currentTeams = await Team.countDocuments({ division: divisionId, seasonName: division.seasonName });
+    if (currentTeams >= maxTeamsPerDivision) {
+      return res.status(409).json({ message: `Maximo ${maxTeamsPerDivision} equipos por division/categoria alcanzado` });
+    }
+  }
 
   let teamName = trimmedName;
   let storedPlayers = [];
