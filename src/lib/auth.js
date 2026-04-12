@@ -4,6 +4,11 @@ const { organization } = require('better-auth/plugins');
 const { MongoClient } = require('mongodb');
 
 const client = new MongoClient(process.env.MONGODB_URI);
+const isProduction = process.env.NODE_ENV === 'production';
+const trustedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3001',
@@ -54,17 +59,15 @@ const auth = betterAuth({
   },
 
   // Accepted origins for CORS / cookie trust
-  trustedOrigins: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-  ],
+  trustedOrigins,
 
   advanced: {
     // Required for cross-origin cookies (Vercel frontend ↔ Render backend).
     // SameSite=None + Secure allows the browser to send the session cookie
     // on cross-origin requests with credentials:include.
     defaultCookieAttributes: {
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
     },
   },
 });
