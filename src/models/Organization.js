@@ -67,8 +67,10 @@ const organizationSchema = new mongoose.Schema(
     // Customer ID for billing model #1 (SaaS subscription to the organizer)
     stripeCustomerId: { type: String, default: null },
     // Connect account ID — null until the org onboards to Stripe Connect.
-    // Kept here so the schema is ready when marketplace payouts are needed.
     stripeAccountId: { type: String, default: null },
+    // true once Stripe confirms charges_enabled on the connected account.
+    // Updated by the account.updated webhook — no live Stripe API call needed elsewhere.
+    stripeConnectActive: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

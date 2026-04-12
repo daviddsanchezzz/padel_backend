@@ -119,6 +119,20 @@ const handleWebhook = async (req, res) => {
     }
   }
 
+  // Stripe Connect — sync stripeConnectActive when an Express account is updated
+  if (event.type === 'account.updated') {
+    const account = event.data.object;
+    const org = await Organization.findOne({ stripeAccountId: account.id });
+    if (org) {
+      const isActive = !!account.charges_enabled;
+      if (org.stripeConnectActive !== isActive) {
+        org.stripeConnectActive = isActive;
+        await org.save();
+        console.log(`[stripe connect] org ${org._id} stripeConnectActive → ${isActive}`);
+      }
+    }
+  }
+
   res.json({ received: true });
 };
 

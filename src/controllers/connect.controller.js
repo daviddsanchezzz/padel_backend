@@ -46,11 +46,10 @@ const onboardConnect = async (req, res) => {
 };
 
 // ── GET /api/connect/status?orgId=xxx ─────────────────────────────────────────
-// Returns the Stripe Connect onboarding status for the org.
+// Returns the Stripe Connect status for the org, read from the DB.
+// stripeConnectActive is kept in sync by the account.updated webhook.
 // status: 'not_connected' | 'pending' | 'active'
 const connectStatus = async (req, res) => {
-  if (!stripe) return res.status(503).json({ message: 'Payments not configured' });
-
   const { orgId } = req.query;
   if (!orgId) return res.status(400).json({ message: 'orgId required' });
 
@@ -61,17 +60,9 @@ const connectStatus = async (req, res) => {
     return res.status(403).json({ message: 'Forbidden' });
   }
 
-  if (!org.stripeAccountId) {
-    return res.json({ status: 'not_connected' });
-  }
-
-  try {
-    const account = await stripe.accounts.retrieve(org.stripeAccountId);
-    const status = account.charges_enabled ? 'active' : 'pending';
-    return res.json({ status, accountId: org.stripeAccountId });
-  } catch {
-    return res.json({ status: 'error' });
-  }
+  if (!org.stripeAccountId) return res.json({ status: 'not_connected' });
+  if (org.stripeConnectActive) return res.json({ status: 'active', accountId: org.stripeAccountId });
+  return res.json({ status: 'pending', accountId: org.stripeAccountId });
 };
 
 module.exports = { onboardConnect, connectStatus };

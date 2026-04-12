@@ -381,8 +381,8 @@ const registerForCompetition = async (req, res) => {
     },
   };
 
-  // If the org has completed Stripe Connect onboarding, send funds directly to them
-  if (org.stripeAccountId) {
+  // If the org has a fully verified Connect account, route funds directly to them
+  if (org.stripeAccountId && org.stripeConnectActive) {
     sessionParams.transfer_data = { destination: org.stripeAccountId };
     // application_fee_amount can be added here in the future for Option B (commission)
   }
