@@ -48,6 +48,20 @@ const teamSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // ── Payment ──────────────────────────────────────────────────────────────
+    // 'free'    → no fee required, registered directly
+    // 'pending' → Stripe Checkout created, awaiting payment
+    // 'paid'    → confirmed via webhook (checkout.session.completed)
+    // 'failed'  → payment failed or expired
+    paymentStatus: {
+      type: String,
+      enum: ['free', 'pending', 'paid', 'failed'],
+      default: 'free',
+    },
+    stripeCheckoutSessionId: { type: String, default: null },
+    stripePaymentIntentId:   { type: String, default: null },
+    amountPaid:  { type: Number, default: null }, // in cents
+    currency:    { type: String, default: null }, // e.g. 'eur'
   },
   { timestamps: true }
 );

@@ -7,6 +7,7 @@ const Division = require('../models/Division');
 const Team = require('../models/Team');
 const Match = require('../models/Match');
 const { calculateStandings } = require('../services/standings.service');
+const stripe = require('../services/stripe');
 
 const toSlug = (name) =>
   name
@@ -319,6 +320,20 @@ const registerForCompetition = async (req, res) => {
 
   const teamName = playerList.map((p) => p.name).join(' / ');
   const activeSeason = competition.seasons?.find((s) => s.isActive);
+  const registrationFee = Number(competition.settings?.registrationFee) || 0;
+  const requiresPayment = stripe && registrationFee > 0;
+
+  // Guard against duplicate paid registrations (same player names, same division, paid)
+  if (requiresPayment) {
+    const existingPaid = await Team.findOne({
+      division: division._id,
+      name: teamName,
+      paymentStatus: 'paid',
+    });
+    if (existingPaid) {
+      return res.status(409).json({ message: 'Ya existe una inscripción pagada con estos nombres en esta categoría.' });
+    }
+  }
 
   const team = await Team.create({
     name: teamName,
@@ -327,9 +342,57 @@ const registerForCompetition = async (req, res) => {
     division: division._id,
     seasonName: activeSeason?.name || 'Temporada 1',
     contactEmail: contactEmail?.trim() || null,
+    paymentStatus: requiresPayment ? 'pending' : 'free',
   });
 
-  res.status(201).json({ message: '¡Inscripción completada!', team });
+  // Free registration — done
+  if (!requiresPayment) {
+    return res.status(201).json({ message: '¡Inscripción completada!', team, requiresPayment: false });
+  }
+
+  // Paid registration — create Stripe Checkout session
+  const frontendUrl = process.env.FRONTEND_URL?.split(',')[0]?.trim() || 'http://localhost:5173';
+
+  // Build session params — route payment to the org's connected Stripe account if available
+  const sessionParams = {
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: 'eur',
+          unit_amount: Math.round(registrationFee * 100),
+          product_data: {
+            name: `Inscripción · ${competition.name}`,
+            description: `${division.name} — ${teamName}`,
+          },
+        },
+        quantity: 1,
+      },
+    ],
+    customer_email: contactEmail?.trim() || undefined,
+    success_url: `${frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url:  `${frontendUrl}/payment/cancel?team_id=${team._id}`,
+    metadata: {
+      teamId:         team._id.toString(),
+      competitionId:  competition._id.toString(),
+      divisionId:     division._id.toString(),
+      organizationId: org._id.toString(),
+    },
+  };
+
+  // If the org has completed Stripe Connect onboarding, send funds directly to them
+  if (org.stripeAccountId) {
+    sessionParams.transfer_data = { destination: org.stripeAccountId };
+    // application_fee_amount can be added here in the future for Option B (commission)
+  }
+
+  const session = await stripe.checkout.sessions.create(sessionParams);
+
+  team.stripeCheckoutSessionId = session.id;
+  await team.save();
+
+  res.status(201).json({ requiresPayment: true, checkoutUrl: session.url, teamId: team._id });
 };
 
 module.exports = {

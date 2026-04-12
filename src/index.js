@@ -12,6 +12,9 @@ const teamRoutes         = require('./routes/team.routes');
 const matchRoutes        = require('./routes/match.routes');
 const standingsRoutes    = require('./routes/standings.routes');
 const organizationRoutes = require('./routes/organization.routes');
+const paymentRoutes      = require('./routes/payment.routes');
+const connectRoutes      = require('./routes/connect.routes');
+const { handleWebhook }  = require('./controllers/payment.controller');
 
 const app = express();
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
@@ -28,6 +31,15 @@ app.use(cors({
   credentials: true,
 }));
 
+// ── Stripe webhook — MUST come before express.json() ─────────────────────────
+// Stripe signs the raw request body. express.json() would consume and parse it,
+// breaking signature verification. We give this route express.raw() instead.
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  handleWebhook,
+);
+
 // Better Auth handler — mounts BEFORE express.json() because it manages its own body parsing.
 // All /api/auth/* requests are handled entirely by Better Auth.
 app.all('/api/auth/*', toNodeHandler(auth));
@@ -35,6 +47,8 @@ app.all('/api/auth/*', toNodeHandler(auth));
 // JSON body parsing for the rest of the API
 app.use(express.json());
 
+app.use('/api/payments',      paymentRoutes);
+app.use('/api/connect',       connectRoutes);
 app.use('/api/sports',        sportRoutes);
 app.use('/api/competitions',  competitionRoutes);
 app.use('/api/organizations', organizationRoutes);
