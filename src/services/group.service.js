@@ -19,7 +19,9 @@ const shuffle = (arr) => {
  */
 const createGroups = (teamIds, teamsPerGroup) => {
   const shuffled = shuffle(teamIds);
-  const numGroups = Math.max(2, Math.ceil(shuffled.length / teamsPerGroup));
+  const parsedTarget = Number(teamsPerGroup);
+  const safeTeamsPerGroup = Number.isFinite(parsedTarget) && parsedTarget > 0 ? Math.floor(parsedTarget) : 4;
+  const numGroups = Math.max(1, Math.ceil(shuffled.length / safeTeamsPerGroup));
   const groups = [];
 
   for (let i = 0; i < numGroups; i++) {
