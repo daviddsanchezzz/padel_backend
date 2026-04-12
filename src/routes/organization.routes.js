@@ -9,12 +9,14 @@ const {
   getPublicCompetition,
   getPublicDivision,
   updateOrganization,
+  registerForCompetition,
 } = require('../controllers/organization.controller');
 
 // Public — no auth required
 router.get('/:id/public', getPublicOrganization);
 router.get('/:orgId/competitions/:compId/public', getPublicCompetition);
 router.get('/:orgId/divisions/:divId/public', getPublicDivision);
+router.post('/:orgId/competitions/:compId/register', registerForCompetition);
 
 // All routes below require a valid session
 router.use(authenticate);

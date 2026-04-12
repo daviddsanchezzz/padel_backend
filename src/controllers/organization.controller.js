@@ -279,6 +279,59 @@ const getPublicDivision = async (req, res) => {
   });
 };
 
+// ── POST /api/organizations/:orgId/competitions/:compId/register ─────────────
+const registerForCompetition = async (req, res) => {
+  const org = await Organization.findById(req.params.orgId);
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Not found' });
+
+  const competition = await Competition.findById(req.params.compId)
+    .populate('sport', 'name scoringType teamSize');
+  if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Not found' });
+  if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Not found' });
+
+  const { divisionId, players, contactEmail } = req.body;
+  if (!divisionId) return res.status(400).json({ message: 'Categoría requerida' });
+
+  const division = await Division.findById(divisionId);
+  if (!division || division.competition.toString() !== competition._id.toString()) {
+    return res.status(404).json({ message: 'Categoría no encontrada' });
+  }
+
+  // Check capacity
+  const maxTeams = competition.settings?.maxTeamsPerDivision || 0;
+  if (maxTeams > 0) {
+    const currentCount = await Team.countDocuments({ division: division._id });
+    if (currentCount >= maxTeams) {
+      return res.status(409).json({ message: 'Esta categoría está completa. No quedan plazas disponibles.' });
+    }
+  }
+
+  // Validate players
+  const teamSize = division.teamSize || competition.sport?.teamSize || 1;
+  const playerList = (players || [])
+    .slice(0, teamSize)
+    .map((p) => ({ name: typeof p === 'string' ? p.trim() : (p.name || '').trim() }))
+    .filter((p) => p.name);
+
+  if (playerList.length !== teamSize) {
+    return res.status(400).json({ message: `Se requieren exactamente ${teamSize} jugador${teamSize > 1 ? 'es' : ''}` });
+  }
+
+  const teamName = playerList.map((p) => p.name).join(' / ');
+  const activeSeason = competition.seasons?.find((s) => s.isActive);
+
+  const team = await Team.create({
+    name: teamName,
+    players: playerList,
+    competition: competition._id,
+    division: division._id,
+    seasonName: activeSeason?.name || 'Temporada 1',
+    contactEmail: contactEmail?.trim() || null,
+  });
+
+  res.status(201).json({ message: '¡Inscripción completada!', team });
+};
+
 module.exports = {
   createOrganization,
   getMyOrganizations,
@@ -287,4 +340,5 @@ module.exports = {
   getPublicCompetition,
   getPublicDivision,
   updateOrganization,
+  registerForCompetition,
 };

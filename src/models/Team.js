@@ -43,6 +43,11 @@ const teamSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Contact email — set when team registers via public form
+    contactEmail: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );
