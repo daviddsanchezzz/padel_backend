@@ -18,6 +18,7 @@ const teamSchema = new mongoose.Schema(
     players: [
       {
         name: { type: String, required: true, trim: true },
+        dorsal: { type: Number, default: null }, // Jersey number — optional
         userId: { type: String, default: null }, // Better Auth user ID — optional
       },
     ],

@@ -9,9 +9,16 @@ const Competition = require('../models/Competition');
 const buildPlayerSlots = (playerNames) => {
   if (!Array.isArray(playerNames)) return [];
   return playerNames
-    .map((n) => (typeof n === 'string' ? n.trim() : ''))
-    .filter(Boolean)
-    .map((name) => ({ name, userId: null }));
+    .map((n) => {
+      if (typeof n === 'string') return { name: n.trim(), dorsal: null, userId: null };
+      if (typeof n === 'object' && n !== null) {
+        const name = typeof n.name === 'string' ? n.name.trim() : '';
+        const dorsal = n.dorsal != null && n.dorsal !== '' ? Number(n.dorsal) : null;
+        return { name, dorsal, userId: null };
+      }
+      return null;
+    })
+    .filter((s) => s && s.name);
 };
 
 const resolveTeamSize = ({ competition, division }) => {
@@ -216,6 +223,7 @@ const updateTeam = async (req, res) => {
     // Preserve existing userIds when updating names
     team.players = slots.map((slot, i) => ({
       name: slot.name,
+      dorsal: slot.dorsal ?? null,
       userId: team.players[i]?.userId ?? null,
     }));
     team.name = slots.map((p) => p.name).join(' / ');
@@ -238,6 +246,7 @@ const updateTeam = async (req, res) => {
       // Preserve userIds for slots that remain
       team.players = slots.map((slot, i) => ({
         name: slot.name,
+        dorsal: slot.dorsal ?? null,
         userId: team.players[i]?.userId ?? null,
       }));
     }
