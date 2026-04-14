@@ -8,6 +8,7 @@ const {
   getPublicOrganization,
   getPublicCompetition,
   getPublicDivision,
+  getPublicMatchDetail,
   updateOrganization,
   registerForCompetition,
 } = require('../controllers/organization.controller');
@@ -16,6 +17,7 @@ const {
 router.get('/:id/public', getPublicOrganization);
 router.get('/:orgId/competitions/:compId/public', getPublicCompetition);
 router.get('/:orgId/divisions/:divId/public', getPublicDivision);
+router.get('/:orgId/matches/:matchId/public', getPublicMatchDetail);
 router.post('/:orgId/competitions/:compId/register', registerForCompetition);
 
 // All routes below require a valid session

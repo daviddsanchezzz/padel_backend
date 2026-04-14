@@ -6,6 +6,7 @@ const Competition = require('../models/Competition');
 const Division = require('../models/Division');
 const Team = require('../models/Team');
 const Match = require('../models/Match');
+const MatchEvent = require('../models/MatchEvent');
 const { calculateStandings } = require('../services/standings.service');
 const stripe = require('../services/stripe');
 
@@ -280,6 +281,38 @@ const getPublicDivision = async (req, res) => {
   });
 };
 
+// â”€â”€ GET /api/organizations/:orgId/matches/:matchId/public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const getPublicMatchDetail = async (req, res) => {
+  const org = await Organization.findById(req.params.orgId);
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
+
+  const match = await Match.findById(req.params.matchId)
+    .populate('teamA', 'name players playerNames')
+    .populate('teamB', 'name players playerNames')
+    .populate('winner', 'name')
+    .populate({ path: 'division', select: 'name competition seasonName' })
+    .populate({
+      path: 'competition',
+      select: 'name type settings organizer organization status sport',
+      populate: { path: 'sport', select: 'name slug scoringType teamSize' },
+    });
+
+  if (!match || !match.competition || match.competition.status !== 'active') {
+    return res.status(404).json({ message: 'Match not found' });
+  }
+  if (match.competition.organization !== org.authOrgId) {
+    return res.status(404).json({ message: 'Match not found' });
+  }
+
+  const events = await MatchEvent.find({ match: match._id }).sort({ order: 1, minute: 1, createdAt: 1 });
+
+  res.json({
+    org: { id: org._id, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
+    match,
+    events,
+  });
+};
+
 // ── POST /api/organizations/:orgId/competitions/:compId/register ─────────────
 const registerForCompetition = async (req, res) => {
   const org = await Organization.findById(req.params.orgId);
@@ -402,6 +435,7 @@ module.exports = {
   getPublicOrganization,
   getPublicCompetition,
   getPublicDivision,
+  getPublicMatchDetail,
   updateOrganization,
   registerForCompetition,
 };
