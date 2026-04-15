@@ -8,6 +8,7 @@ const {
   getPublicOrganization,
   getPublicOrganizationBySlug,
   getPublicCompetition,
+  getPublicCompetitionBySlug,
   getPublicDivision,
   getPublicMatchDetail,
   updateOrganization,
@@ -16,6 +17,7 @@ const {
 
 // Public — no auth required
 router.get('/public/by-slug/:slug', getPublicOrganizationBySlug);
+router.get('/public/:orgRef/competitions/by-slug/:compSlug/public', getPublicCompetitionBySlug);
 router.get('/:id/public', getPublicOrganization);
 router.get('/:orgId/competitions/:compId/public', getPublicCompetition);
 router.get('/:orgId/divisions/:divId/public', getPublicDivision);

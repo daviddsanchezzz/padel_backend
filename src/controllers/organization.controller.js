@@ -47,6 +47,21 @@ const findPublicOrgByRef = async (orgRef) => {
   return Organization.findOne({ slug: String(orgRef).toLowerCase().trim() });
 };
 
+const findPublicCompetitionByRef = async ({ org, competitionRef }) => {
+  if (!competitionRef) return null;
+
+  if (mongoose.Types.ObjectId.isValid(competitionRef)) {
+    const byId = await Competition.findById(competitionRef).populate('sport', 'name slug scoringType teamSize');
+    if (byId && byId.organization === org.authOrgId) return byId;
+  }
+
+  return Competition.findOne({
+    organization: org.authOrgId,
+    publicSlug: String(competitionRef).toLowerCase().trim(),
+    status: 'active',
+  }).populate('sport', 'name slug scoringType teamSize');
+};
+
 // ── POST /api/organizations ──────────────────────────────────────────────────
 const createOrganization = async (req, res) => {
   const { name, description, location, type } = req.body;
@@ -152,7 +167,7 @@ const getPublicOrganization = async (req, res) => {
     organization: org.authOrgId,
     status: 'active',
   })
-    .select('name type status seasons sport createdAt')
+    .select('name publicSlug type status seasons sport createdAt')
     .populate('sport', 'name slug')
     .sort({ createdAt: -1 })
     .limit(20);
@@ -180,7 +195,7 @@ const getPublicOrganizationBySlug = async (req, res) => {
     organization: org.authOrgId,
     status: 'active',
   })
-    .select('name type status seasons sport createdAt')
+    .select('name publicSlug type status seasons sport createdAt')
     .populate('sport', 'name slug')
     .sort({ createdAt: -1 })
     .limit(20);
@@ -253,6 +268,26 @@ const getPublicCompetition = async (req, res) => {
   res.json({ org: { id: org._id, slug: org.slug, name: org.name, logo: org.logo, primaryColor: org.primaryColor }, competition, divisions });
 };
 
+// ── GET /api/organizations/public/:orgRef/competitions/by-slug/:compSlug/public
+const getPublicCompetitionBySlug = async (req, res) => {
+  const org = await findPublicOrgByRef(req.params.orgRef);
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
+
+  const competition = await findPublicCompetitionByRef({ org, competitionRef: req.params.compSlug });
+  if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
+
+  const activeSeason = competition.seasons?.find((s) => s.isActive);
+  let divisions = [];
+  if (activeSeason) {
+    divisions = await Division.find({
+      competition: competition._id,
+      seasonName: activeSeason.name,
+    }).sort({ order: 1, createdAt: 1 });
+  }
+
+  res.json({ org: { id: org._id, slug: org.slug, name: org.name, logo: org.logo, primaryColor: org.primaryColor }, competition, divisions });
+};
+
 // ── GET /api/organizations/:orgId/divisions/:divId/public ────────────────────
 const getPublicDivision = async (req, res) => {
   const org = await findPublicOrgByRef(req.params.orgId);
@@ -260,7 +295,7 @@ const getPublicDivision = async (req, res) => {
 
   const division = await Division.findById(req.params.divId).populate({
     path: 'competition',
-    select: 'name type settings sport organizer organization status seasons',
+    select: 'name publicSlug type settings sport organizer organization status seasons',
     populate: { path: 'sport', select: 'name scoringType teamSize' },
   });
   if (!division) return res.status(404).json({ message: 'Division not found' });
@@ -363,7 +398,7 @@ const getPublicMatchDetail = async (req, res) => {
     .populate({ path: 'division', select: 'name competition seasonName' })
     .populate({
       path: 'competition',
-      select: 'name type settings organizer organization status sport',
+      select: 'name publicSlug type settings organizer organization status sport',
       populate: { path: 'sport', select: 'name slug scoringType teamSize' },
     });
 
@@ -505,6 +540,7 @@ module.exports = {
   getPublicOrganization,
   getPublicOrganizationBySlug,
   getPublicCompetition,
+  getPublicCompetitionBySlug,
   getPublicDivision,
   getPublicMatchDetail,
   updateOrganization,

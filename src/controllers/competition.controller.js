@@ -10,6 +10,29 @@ const normalizeSportName = (value = '') =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+const toSlug = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'competicion';
+
+const cleanName = (value = '') => String(value).trim().replace(/\s+/g, ' ');
+
+const ensureUniqueCompetitionSlug = async ({ organization, baseName, excludeCompetitionId = null }) => {
+  const baseSlug = toSlug(baseName);
+  const orgKey = organization || null;
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await Competition.findOne({ organization: orgKey, publicSlug: candidate }).select('_id').lean();
+    if (!existing || String(existing._id) === String(excludeCompetitionId)) return candidate;
+    candidate = `${baseSlug}-${suffix++}`;
+  }
+};
+
 const isFootballSport = (sport) => {
   const slug = (sport?.slug || '').toLowerCase();
   const name = normalizeSportName(sport?.name || '');
@@ -108,7 +131,8 @@ const getCompetition = async (req, res) => {
 const createCompetition = async (req, res) => {
   const { name, type, sportId, description, settings, season, organizationId, location, startDate, endDate } = req.body;
 
-  if (!name)    return res.status(400).json({ message: 'Name is required' });
+  const normalizedName = cleanName(name);
+  if (!normalizedName) return res.status(400).json({ message: 'Name is required' });
   if (!type)    return res.status(400).json({ message: 'Type is required (league | tournament)' });
   if (!sportId) return res.status(400).json({ message: 'Sport is required' });
 
@@ -159,12 +183,16 @@ const createCompetition = async (req, res) => {
     return res.status(400).json({ message: meta.message });
   }
 
+  const organizationKey = organizationId || null;
+  const publicSlug = await ensureUniqueCompetitionSlug({ organization: organizationKey, baseName: normalizedName });
+
   const competition = await Competition.create({
-    name,
+    name: normalizedName,
+    publicSlug,
     type,
     sport: sportId,
     organizer: req.user._id,
-    organization: organizationId || null,
+    organization: organizationKey,
     seasons: [{ name: season?.trim() || 'Temporada 1', isActive: true }],
     description,
     location: meta.location,
@@ -180,6 +208,19 @@ const createCompetition = async (req, res) => {
 const updateCompetition = async (req, res) => {
   const existing = await Competition.findOne({ _id: req.params.id, organizer: req.user._id }).populate('sport');
   if (!existing) return res.status(404).json({ message: 'Competition not found' });
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'name')) {
+    const normalizedName = cleanName(req.body.name);
+    if (!normalizedName) {
+      return res.status(400).json({ message: 'Name is required' });
+    }
+    req.body.name = normalizedName;
+    req.body.publicSlug = await ensureUniqueCompetitionSlug({
+      organization: existing.organization || null,
+      baseName: normalizedName,
+      excludeCompetitionId: existing._id,
+    });
+  }
 
   if (
     Object.prototype.hasOwnProperty.call(req.body, 'location') ||
