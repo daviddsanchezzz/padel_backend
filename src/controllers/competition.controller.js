@@ -345,7 +345,7 @@ const buildSeasonPlan = async (competitionId) => {
     throw new Error('No active season found');
   }
 
-  const divisions = await Division.find({ competition: competitionId, seasonName: activeSeason.name }).sort({ order: 1 });
+  const divisions = await Division.find({ competition: competitionId, seasonId: activeSeason._id }).sort({ order: 1 });
   const allStandings = await Promise.all(divisions.map((d) => calculateStandings(d._id)));
 
   const toPromote  = [];  // toPromote[i]  = top teams from div i going UP   (to i-1)
@@ -397,7 +397,7 @@ const createNewSeason = async (req, res) => {
   if (!lastActiveSeason) return res.status(400).json({ message: 'No active season found' });
 
   // Build promotion/relegation plan from last season
-  const divisions = await Division.find({ competition: req.params.id, seasonName: lastActiveSeason.name }).sort({ order: 1 });
+  const divisions = await Division.find({ competition: req.params.id, seasonId: lastActiveSeason._id }).sort({ order: 1 });
   const allStandings = await Promise.all(divisions.map((d) => calculateStandings(d._id)));
 
   const settings = competition.settings || {};
@@ -447,30 +447,33 @@ const createNewSeason = async (req, res) => {
   });
   await competition.save();
 
+  // The new season subdoc _id is now available after save
+  const newSeason = competition.seasons[competition.seasons.length - 1];
+
   // Create new divisions with updated teams
   for (let i = 0; i < divisions.length; i++) {
     const newDiv = await Division.create({
       name: divisions[i].name,
       competition: req.params.id,
       order: divisions[i].order,
+      seasonId: newSeason._id,
       seasonName: newSeasonName,
     });
 
     // Teams for new division: staying + relegated from above + promoted from below
     const teamsHere = [
       ...staying[i],
-      ...(i > 0                        ? toRelegate[i - 1] : []),
+      ...(i > 0                    ? toRelegate[i - 1] : []),
       ...(i < divisions.length - 1 ? toPromote[i + 1]  : []),
     ];
 
     await Promise.all(teamsHere.map((s) =>
       Team.create({
         name: s.team.name,
-        player1Name: s.team.player1Name || null,
-        player2Name: s.team.player2Name || null,
         competition: req.params.id,
         division: newDiv._id,
         players: s.team.players || [],
+        seasonId: newSeason._id,
         seasonName: newSeasonName,
       })
     ));
@@ -543,15 +546,16 @@ const updateCompetitionSeason = async (req, res) => {
 
   await competition.save();
 
-  // Cascade season rename to Division and Team documents
+  // Cascade season rename — update display field only (relation uses seasonId)
   if (oldSeasonName && newSeasonName) {
+    const seasonObjId = competition.seasons[seasonIndex]._id;
     await Promise.all([
       Division.updateMany(
-        { competition: competition._id, seasonName: oldSeasonName },
+        { competition: competition._id, seasonId: seasonObjId },
         { $set: { seasonName: newSeasonName } }
       ),
       Team.updateMany(
-        { competition: competition._id, seasonName: oldSeasonName },
+        { competition: competition._id, seasonId: seasonObjId },
         { $set: { seasonName: newSeasonName } }
       ),
     ]);

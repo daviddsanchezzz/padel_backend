@@ -116,9 +116,9 @@ const getCompetitionTeamsDetailed = async (req, res) => {
 
   const teams = await Team.find({
     competition: competition._id,
-    seasonName: activeSeason.name,
+    seasonId: activeSeason._id,
   })
-    .populate('division', 'name order seasonName')
+    .populate('division', 'name order seasonId seasonName')
     .sort({ createdAt: 1 });
 
   const detailed = teams.map((team) => ({
@@ -201,6 +201,7 @@ const createCompetitionTeam = async (req, res) => {
     players: storedPlayers,
     competition: competitionId,
     division: null,
+    seasonId: activeSeason._id,
     seasonName: activeSeason.name,
     seed: seed || null,
   });
@@ -234,8 +235,8 @@ const joinTeam = async (req, res) => {
 
   // User already in another team in the same scope
   const scopeQuery = team.division
-    ? { division: team.division._id, seasonName: team.seasonName }
-    : { competition: team.competition._id, division: null, seasonName: team.seasonName };
+    ? { division: team.division._id, seasonId: team.seasonId }
+    : { competition: team.competition._id, division: null, seasonId: team.seasonId };
 
   const otherTeams = await Team.find({ ...scopeQuery, _id: { $ne: id } });
   if (otherTeams.some((t) => t.players.some((p) => p.userId === userId))) {
@@ -350,7 +351,7 @@ const updateTeamDivision = async (req, res) => {
   if (division.competition.toString() !== team.competition._id.toString()) {
     return res.status(400).json({ message: 'Division does not belong to this competition' });
   }
-  if (division.seasonName !== team.seasonName) {
+  if (String(division.seasonId) !== String(team.seasonId)) {
     return res.status(400).json({ message: 'Division is not in the active team season' });
   }
 

@@ -297,7 +297,7 @@ const getPublicCompetition = async (req, res) => {
   if (activeSeason) {
     divisions = await Division.find({
       competition: competition._id,
-      seasonName: activeSeason.name,
+      seasonId: activeSeason._id,
     }).sort({ order: 1, createdAt: 1 });
   }
 
@@ -319,7 +319,7 @@ const getPublicCompetitionBySlug = async (req, res) => {
   if (activeSeason) {
     divisions = await Division.find({
       competition: competition._id,
-      seasonName: activeSeason.name,
+      seasonId: activeSeason._id,
     }).sort({ order: 1, createdAt: 1 });
   }
 
@@ -518,7 +518,8 @@ const registerForCompetition = async (req, res) => {
     players: playerList,
     competition: competition._id,
     division: division._id,
-    seasonName: activeSeason?.name || 'Temporada 1',
+    seasonId: activeSeason._id,
+    seasonName: activeSeason.name,
     contactEmail: contactEmail?.trim() || null,
     paymentStatus: requiresPayment ? 'pending' : 'free',
   });
