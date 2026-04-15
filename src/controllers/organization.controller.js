@@ -599,41 +599,39 @@ const getAdminOrganizationsOverview = async (_req, res) => {
   ]);
   const compMap = new Map(compCounts.map((c) => [c._id, c.count]));
 
-  // Member counts per authOrgId from Better Auth's member collection
+  // Better Auth stores IDs in MongoDB as ObjectIds (24-char hex).
+  // Native driver does NOT auto-cast strings → ObjectId, so we convert explicitly.
+  const toObjectIds = (ids) =>
+    ids.filter((id) => mongoose.Types.ObjectId.isValid(id))
+       .map((id) => new mongoose.Types.ObjectId(id));
+
+  const authOrgObjectIds = toObjectIds(authOrgIds);
+  const ownerObjectIds   = toObjectIds(ownerIds);
+
+  // Member counts per authOrgId — organizationId stored as ObjectId in Better Auth
   const memberCounts = await mongoose.connection.db
     .collection('member')
     .aggregate([
-      { $match: { organizationId: { $in: authOrgIds } } },
-      { $group: { _id: '$organizationId', count: { $sum: 1 } } },
+      { $match: { organizationId: { $in: authOrgObjectIds } } },
+      {
+        $group: {
+          _id: { $toString: '$organizationId' },
+          count: { $sum: 1 },
+        },
+      },
     ])
     .toArray();
   const memberMap = new Map(memberCounts.map((m) => [m._id, m.count]));
 
-  // Owner names from Better Auth's user collection.
-  // Better Auth with MongoDB adapter stores the primary key as _id (may be ObjectId or string).
-  // We try _id as string, _id as ObjectId, and a separate `id` field to be resilient.
-  const objectIdOwnerIds = ownerIds
-    .filter((id) => mongoose.Types.ObjectId.isValid(id))
-    .map((id) => new mongoose.Types.ObjectId(id));
-
+  // Owner names — _id stored as ObjectId in Better Auth's user collection
   const owners = await mongoose.connection.db
     .collection('user')
-    .find({
-      $or: [
-        { _id: { $in: ownerIds } },
-        ...(objectIdOwnerIds.length ? [{ _id: { $in: objectIdOwnerIds } }] : []),
-        { id: { $in: ownerIds } },
-      ],
-    })
-    .project({ _id: 1, id: 1, name: 1, email: 1 })
+    .find({ _id: { $in: ownerObjectIds } })
+    .project({ _id: 1, name: 1, email: 1 })
     .toArray();
 
   const ownerMap = new Map(
-    owners.map((u) => {
-      // Normalise key: prefer the `id` string field, fall back to _id as string
-      const key = u.id ? String(u.id) : String(u._id);
-      return [key, { name: u.name, email: u.email }];
-    })
+    owners.map((u) => [String(u._id), { name: u.name, email: u.email }])
   );
 
   // Member counts: Better Auth may not add the creator to the `member` collection
