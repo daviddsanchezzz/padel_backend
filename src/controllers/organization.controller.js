@@ -62,6 +62,27 @@ const findPublicCompetitionByRef = async ({ org, competitionRef }) => {
   }).populate('sport', 'name slug scoringType teamSize');
 };
 
+const ensureCompetitionPublicSlug = async (competitionDoc) => {
+  if (!competitionDoc || competitionDoc.publicSlug) return competitionDoc;
+
+  const baseSlug = toSlug(competitionDoc.name) || 'competicion';
+  let candidate = baseSlug;
+  let suffix = 2;
+  while (true) {
+    const existing = await Competition.findOne({
+      organization: competitionDoc.organization,
+      publicSlug: candidate,
+      _id: { $ne: competitionDoc._id },
+    }).select('_id').lean();
+    if (!existing) break;
+    candidate = `${baseSlug}-${suffix++}`;
+  }
+
+  competitionDoc.publicSlug = candidate;
+  await competitionDoc.save();
+  return competitionDoc;
+};
+
 // ── POST /api/organizations ──────────────────────────────────────────────────
 const createOrganization = async (req, res) => {
   const { name, description, location, type } = req.body;
@@ -171,6 +192,7 @@ const getPublicOrganization = async (req, res) => {
     .populate('sport', 'name slug')
     .sort({ createdAt: -1 })
     .limit(20);
+  await Promise.all(competitions.map((comp) => ensureCompetitionPublicSlug(comp)));
 
   res.json({
     id: org._id,
@@ -199,6 +221,7 @@ const getPublicOrganizationBySlug = async (req, res) => {
     .populate('sport', 'name slug')
     .sort({ createdAt: -1 })
     .limit(20);
+  await Promise.all(competitions.map((comp) => ensureCompetitionPublicSlug(comp)));
 
   res.json({
     id: org._id,
@@ -255,6 +278,7 @@ const getPublicCompetition = async (req, res) => {
     .populate('sport', 'name slug scoringType teamSize');
   if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
   if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Competition not found' });
+  await ensureCompetitionPublicSlug(competition);
 
   const activeSeason = competition.seasons?.find((s) => s.isActive);
   let divisions = [];
@@ -275,6 +299,7 @@ const getPublicCompetitionBySlug = async (req, res) => {
 
   const competition = await findPublicCompetitionByRef({ org, competitionRef: req.params.compSlug });
   if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
+  await ensureCompetitionPublicSlug(competition);
 
   const activeSeason = competition.seasons?.find((s) => s.isActive);
   let divisions = [];
