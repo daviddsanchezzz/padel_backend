@@ -339,8 +339,12 @@ const buildSeasonPlan = async (competitionId) => {
   const settings = competition.settings || {};
   const promotionSpots  = settings.promotionSpots  || 0;
   const relegationSpots = settings.relegationSpots || 0;
+  const activeSeason = getActiveSeason(competition);
+  if (!activeSeason) {
+    throw new Error('No active season found');
+  }
 
-  const divisions = await Division.find({ competition: competitionId }).sort({ order: 1 });
+  const divisions = await Division.find({ competition: competitionId, seasonName: activeSeason.name }).sort({ order: 1 });
   const allStandings = await Promise.all(divisions.map((d) => calculateStandings(d._id)));
 
   const toPromote  = [];  // toPromote[i]  = top teams from div i going UP   (to i-1)
@@ -357,7 +361,7 @@ const buildSeasonPlan = async (competitionId) => {
     staying.push(st.slice(canUp, canDown > 0 ? n - canDown : n));
   }
 
-  return { divisions, toPromote, toRelegate, staying, nextSeason: autoNextSeason(competition.season) };
+  return { divisions, toPromote, toRelegate, staying, nextSeason: autoNextSeason(activeSeason.name) };
 };
 
 const getNewSeasonPreview = async (req, res) => {
@@ -365,7 +369,12 @@ const getNewSeasonPreview = async (req, res) => {
   if (!competition) return res.status(404).json({ message: 'Competition not found' });
   if (competition.type !== 'league') return res.status(400).json({ message: 'Only for leagues' });
 
-  const plan = await buildSeasonPlan(req.params.id);
+  let plan;
+  try {
+    plan = await buildSeasonPlan(req.params.id);
+  } catch (err) {
+    return res.status(400).json({ message: err.message || 'No se pudo calcular la nueva temporada' });
+  }
 
   const preview = plan.divisions.map((div, i) => ({
     division: { _id: div._id, name: div.name, order: div.order },
