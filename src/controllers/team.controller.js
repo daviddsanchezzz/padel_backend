@@ -80,6 +80,7 @@ const createDivisionTeam = async (req, res) => {
     players: storedPlayers,
     competition: division.competition._id,
     division: divisionId,
+    seasonId: division.seasonId,
     seasonName: division.seasonName,
   });
 
@@ -97,7 +98,7 @@ const getCompetitionTeams = async (req, res) => {
   const teams = await Team.find({
     competition: req.params.competitionId,
     division: null,
-    seasonName: activeSeason.name,
+    seasonId: activeSeason._id,
   });
   res.json(teams);
 };
