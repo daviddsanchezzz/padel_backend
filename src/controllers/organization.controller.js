@@ -218,6 +218,7 @@ const updateOrganization = async (req, res) => {
       return res.status(409).json({ message: 'An organization with this name already exists' });
     }
     org.name = cleanName;
+    org.slug = await ensureUniqueSlug(cleanName, org._id);
   }
   if (description !== undefined) org.description = description;
   if (location !== undefined) org.location = location;
