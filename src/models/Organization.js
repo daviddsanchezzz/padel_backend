@@ -78,6 +78,8 @@ const organizationSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // Sports explicitly disabled for this org. Empty = all sports enabled (default).
+    disabledSports: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Sport' }],
     // ── Stripe ───────────────────────────────────────────────────────────────
     // Customer ID for billing model #1 (SaaS subscription to the organizer)
     stripeCustomerId: { type: String, default: null },

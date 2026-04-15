@@ -14,6 +14,7 @@ const {
   updateOrganization,
   registerForCompetition,
   getAdminOrganizationsOverview,
+  patchOrgSports,
 } = require('../controllers/organization.controller');
 
 // Public — no auth required
@@ -29,6 +30,7 @@ router.post('/:orgId/competitions/:compId/register', registerForCompetition);
 router.use(authenticate);
 
 router.get('/admin/overview', requireAdmin, getAdminOrganizationsOverview);
+router.patch('/admin/:id/sports', requireAdmin, patchOrgSports);
 router.get('/', getMyOrganizations);
 router.post('/', createOrganization);
 router.get('/:id', getOrganization);

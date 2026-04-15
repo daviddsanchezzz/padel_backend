@@ -575,39 +575,23 @@ const registerForCompetition = async (req, res) => {
 
 // -- GET /api/organizations/admin/overview (admin only)
 const getAdminOrganizationsOverview = async (_req, res) => {
-  const organizations = await Organization.find({})
-    .select('name slug type ownerId authOrgId stripeCustomerId stripeAccountId stripeConnectActive createdAt')
-    .sort({ createdAt: -1 })
-    .lean();
+  const Sport = require('../models/Sport');
 
-  if (organizations.length === 0) {
-    return res.json({ organizations: [] });
-  }
-
-  const authOrgIds = organizations.map((org) => org.authOrgId).filter(Boolean);
-
-  const sportsByOrganization = await Competition.aggregate([
-    { $match: { organization: { $in: authOrgIds }, status: 'active' } },
-    { $lookup: { from: 'sports', localField: 'sport', foreignField: '_id', as: 'sportDoc' } },
-    { $unwind: '$sportDoc' },
-    {
-      $group: {
-        _id: '$organization',
-        sports: { $addToSet: '$sportDoc.name' },
-        activeCompetitions: { $sum: 1 },
-      },
-    },
+  const [organizations, allSports] = await Promise.all([
+    Organization.find({})
+      .select('name slug type ownerId authOrgId disabledSports stripeCustomerId stripeAccountId stripeConnectActive createdAt')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Sport.find().sort({ name: 1 }).lean(),
   ]);
 
-  const sportsMap = new Map(
-    sportsByOrganization.map((item) => [String(item._id), { sports: item.sports || [], activeCompetitions: item.activeCompetitions || 0 }])
-  );
+  if (organizations.length === 0) {
+    return res.json({ organizations: [], allSports });
+  }
 
   const withOverview = organizations.map((org) => {
-    const stats = sportsMap.get(String(org.authOrgId)) || { sports: [], activeCompetitions: 0 };
-    const subscription = org.stripeCustomerId
-      ? 'Pendiente integración'
-      : 'Sin suscripción';
+    const subscription = org.stripeCustomerId ? 'Pendiente integración' : 'Sin suscripción';
+    const disabledIds = new Set((org.disabledSports || []).map(String));
 
     return {
       id: org._id,
@@ -619,12 +603,27 @@ const getAdminOrganizationsOverview = async (_req, res) => {
       createdAt: org.createdAt,
       subscription,
       stripeConnectActive: !!org.stripeConnectActive,
-      activeCompetitions: stats.activeCompetitions,
-      activeSports: stats.sports,
+      disabledSports: [...disabledIds],
     };
   });
 
-  res.json({ organizations: withOverview });
+  res.json({ organizations: withOverview, allSports });
+};
+
+// -- PATCH /api/organizations/admin/:id/sports (admin only)
+const patchOrgSports = async (req, res) => {
+  const { disabledSports } = req.body;
+  if (!Array.isArray(disabledSports)) {
+    return res.status(400).json({ message: 'disabledSports must be an array' });
+  }
+
+  const org = await Organization.findById(req.params.id);
+  if (!org) return res.status(404).json({ message: 'Organization not found' });
+
+  org.disabledSports = disabledSports;
+  await org.save();
+
+  res.json({ id: org._id, disabledSports: org.disabledSports });
 };
 
 module.exports = {
@@ -640,4 +639,5 @@ module.exports = {
   updateOrganization,
   registerForCompetition,
   getAdminOrganizationsOverview,
+  patchOrgSports,
 };
