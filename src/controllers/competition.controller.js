@@ -1,6 +1,7 @@
 const Competition = require('../models/Competition');
 const Division = require('../models/Division');
 const Team = require('../models/Team');
+const Match = require('../models/Match');
 const Sport = require('../models/Sport');
 const { calculateStandings } = require('../services/standings.service');
 
