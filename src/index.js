@@ -14,6 +14,7 @@ const standingsRoutes    = require('./routes/standings.routes');
 const organizationRoutes = require('./routes/organization.routes');
 const paymentRoutes      = require('./routes/payment.routes');
 const connectRoutes      = require('./routes/connect.routes');
+const userRoutes         = require('./routes/user.routes');
 const { handleWebhook }  = require('./controllers/payment.controller');
 
 const app = express();
@@ -49,6 +50,7 @@ app.use(express.json());
 
 app.use('/api/payments',      paymentRoutes);
 app.use('/api/connect',       connectRoutes);
+app.use('/api/users',         userRoutes);
 app.use('/api/sports',        sportRoutes);
 app.use('/api/competitions',  competitionRoutes);
 app.use('/api/organizations', organizationRoutes);
