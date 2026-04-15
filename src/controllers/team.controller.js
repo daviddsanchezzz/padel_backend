@@ -33,7 +33,7 @@ const getDivisionTeams = async (req, res) => {
   const division = await Division.findById(req.params.divisionId);
   if (!division) return res.status(404).json({ message: 'Division not found' });
 
-  const teams = await Team.find({ division: req.params.divisionId, seasonName: division.seasonName });
+  const teams = await Team.find({ division: req.params.divisionId, seasonId: division.seasonId });
   res.json(teams);
 };
 
@@ -53,7 +53,7 @@ const createDivisionTeam = async (req, res) => {
   const maxTeamsPerDivision = Number(division.competition?.settings?.maxTeamsPerDivision || 0);
 
   if (maxTeamsPerDivision > 0) {
-    const currentTeams = await Team.countDocuments({ division: divisionId, seasonName: division.seasonName });
+    const currentTeams = await Team.countDocuments({ division: divisionId, seasonId: division.seasonId });
     if (currentTeams >= maxTeamsPerDivision) {
       return res.status(409).json({ message: `Maximo ${maxTeamsPerDivision} equipos por division/categoria alcanzado` });
     }
