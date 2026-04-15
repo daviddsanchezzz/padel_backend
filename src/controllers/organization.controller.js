@@ -83,6 +83,17 @@ const ensureCompetitionPublicSlug = async (competitionDoc) => {
   return competitionDoc;
 };
 
+const applyEffectiveCompetitionDates = (competitionDoc) => {
+  if (!competitionDoc) return competitionDoc;
+  if (competitionDoc.type !== 'league') return competitionDoc;
+  const activeSeason = competitionDoc.seasons?.find((s) => s.isActive);
+  const seasonStart = activeSeason?.startDate || '';
+  const seasonEnd = activeSeason?.endDate || '';
+  competitionDoc.startDate = seasonStart || competitionDoc.startDate || '';
+  competitionDoc.endDate = seasonEnd || competitionDoc.endDate || '';
+  return competitionDoc;
+};
+
 // ── POST /api/organizations ──────────────────────────────────────────────────
 const createOrganization = async (req, res) => {
   const { name, description, location, type } = req.body;
@@ -279,6 +290,7 @@ const getPublicCompetition = async (req, res) => {
   if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
   if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Competition not found' });
   await ensureCompetitionPublicSlug(competition);
+  applyEffectiveCompetitionDates(competition);
 
   const activeSeason = competition.seasons?.find((s) => s.isActive);
   let divisions = [];
@@ -300,6 +312,7 @@ const getPublicCompetitionBySlug = async (req, res) => {
   const competition = await findPublicCompetitionByRef({ org, competitionRef: req.params.compSlug });
   if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Competition not found' });
   await ensureCompetitionPublicSlug(competition);
+  applyEffectiveCompetitionDates(competition);
 
   const activeSeason = competition.seasons?.find((s) => s.isActive);
   let divisions = [];

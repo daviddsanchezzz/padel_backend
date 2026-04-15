@@ -105,10 +105,25 @@ const autoNextSeason = (season) => {
   return `${season} 2`;
 };
 
+const getActiveSeason = (competition) => competition?.seasons?.find((s) => s.isActive) || null;
+
+const applyEffectiveDates = (competitionDoc) => {
+  if (!competitionDoc) return competitionDoc;
+  if (competitionDoc.type !== 'league') return competitionDoc;
+
+  const activeSeason = getActiveSeason(competitionDoc);
+  const seasonStart = activeSeason?.startDate || '';
+  const seasonEnd = activeSeason?.endDate || '';
+  competitionDoc.startDate = seasonStart || competitionDoc.startDate || '';
+  competitionDoc.endDate = seasonEnd || competitionDoc.endDate || '';
+  return competitionDoc;
+};
+
 const getCompetitions = async (req, res) => {
   const competitions = await Competition.find({ organizer: req.user._id })
     .populate('sport', 'name slug scoringType')
     .sort({ createdAt: -1 });
+  competitions.forEach((competition) => applyEffectiveDates(competition));
   res.json(competitions);
 };
 
@@ -118,6 +133,7 @@ const getPlayerCompetitions = async (req, res) => {
     .populate({ path: 'competition', select: 'name type sport status seasons organizer', populate: { path: 'sport', select: 'name slug' } })
     .populate('division', 'name');
   const competitions = [...new Map(teams.map(t => [t.competition._id.toString(), t.competition])).values()];
+  competitions.forEach((competition) => applyEffectiveDates(competition));
   res.json(competitions);
 };
 
@@ -125,6 +141,7 @@ const getCompetition = async (req, res) => {
   const competition = await Competition.findById(req.params.id)
     .populate('sport', 'name slug scoringType teamSize defaultSettings');
   if (!competition) return res.status(404).json({ message: 'Competition not found' });
+  applyEffectiveDates(competition);
   res.json(competition);
 };
 
@@ -193,15 +210,21 @@ const createCompetition = async (req, res) => {
     sport: sportId,
     organizer: req.user._id,
     organization: organizationKey,
-    seasons: [{ name: season?.trim() || 'Temporada 1', isActive: true }],
+    seasons: [{
+      name: season?.trim() || 'Temporada 1',
+      isActive: true,
+      startDate: type === 'league' ? meta.startDate : '',
+      endDate: type === 'league' ? meta.endDate : '',
+    }],
     description,
     location: meta.location,
-    startDate: meta.startDate,
-    endDate: meta.endDate,
+    startDate: type === 'tournament' ? meta.startDate : '',
+    endDate: type === 'tournament' ? meta.endDate : '',
     settings: mergedSettings,
   });
 
   await competition.populate('sport', 'name slug scoringType teamSize');
+  applyEffectiveDates(competition);
   res.status(201).json(competition);
 };
 
@@ -227,17 +250,33 @@ const updateCompetition = async (req, res) => {
     Object.prototype.hasOwnProperty.call(req.body, 'startDate') ||
     Object.prototype.hasOwnProperty.call(req.body, 'endDate')
   ) {
+    const activeSeason = getActiveSeason(existing);
+    const currentStart = existing.type === 'league' ? (activeSeason?.startDate || '') : (existing.startDate || '');
+    const currentEnd = existing.type === 'league' ? (activeSeason?.endDate || '') : (existing.endDate || '');
+
     const meta = normalizeCompetitionMeta({
       location: Object.prototype.hasOwnProperty.call(req.body, 'location') ? req.body.location : existing.location,
-      startDate: Object.prototype.hasOwnProperty.call(req.body, 'startDate') ? req.body.startDate : existing.startDate,
-      endDate: Object.prototype.hasOwnProperty.call(req.body, 'endDate') ? req.body.endDate : existing.endDate,
+      startDate: Object.prototype.hasOwnProperty.call(req.body, 'startDate') ? req.body.startDate : currentStart,
+      endDate: Object.prototype.hasOwnProperty.call(req.body, 'endDate') ? req.body.endDate : currentEnd,
     });
     if (!meta.ok) {
       return res.status(400).json({ message: meta.message });
     }
+
     if (Object.prototype.hasOwnProperty.call(req.body, 'location')) req.body.location = meta.location;
-    if (Object.prototype.hasOwnProperty.call(req.body, 'startDate')) req.body.startDate = meta.startDate;
-    if (Object.prototype.hasOwnProperty.call(req.body, 'endDate')) req.body.endDate = meta.endDate;
+
+    if (existing.type === 'league' && (Object.prototype.hasOwnProperty.call(req.body, 'startDate') || Object.prototype.hasOwnProperty.call(req.body, 'endDate'))) {
+      req.body.seasons = existing.seasons.map((season) => ({
+        ...(typeof season?.toObject === 'function' ? season.toObject() : season),
+        startDate: season.isActive ? meta.startDate : (season.startDate || ''),
+        endDate: season.isActive ? meta.endDate : (season.endDate || ''),
+      }));
+      delete req.body.startDate;
+      delete req.body.endDate;
+    } else {
+      if (Object.prototype.hasOwnProperty.call(req.body, 'startDate')) req.body.startDate = meta.startDate;
+      if (Object.prototype.hasOwnProperty.call(req.body, 'endDate')) req.body.endDate = meta.endDate;
+    }
   }
 
   if (req.body?.settings) {
@@ -262,6 +301,7 @@ const updateCompetition = async (req, res) => {
     { new: true, runValidators: true }
   ).populate('sport', 'name slug scoringType');
   if (!competition) return res.status(404).json({ message: 'Competition not found' });
+  applyEffectiveDates(competition);
   res.json(competition);
 };
 
@@ -355,7 +395,7 @@ const createNewSeason = async (req, res) => {
 
   // Add new season to array and mark as active
   competition.seasons.forEach((s) => (s.isActive = false));
-  competition.seasons.push({ name: newSeasonName, isActive: true });
+  competition.seasons.push({ name: newSeasonName, isActive: true, startDate: '', endDate: '' });
   await competition.save();
 
   // Create new divisions with updated teams
@@ -388,6 +428,7 @@ const createNewSeason = async (req, res) => {
   }
 
   await competition.populate('sport', 'name slug scoringType');
+  applyEffectiveDates(competition);
   res.status(201).json(competition);
 };
 

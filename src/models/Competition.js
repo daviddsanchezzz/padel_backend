@@ -48,6 +48,14 @@ const competitionSchema = new mongoose.Schema(
           type: String,
           required: true,
         },
+        startDate: {
+          type: String,
+          default: '',
+        },
+        endDate: {
+          type: String,
+          default: '',
+        },
         isActive: {
           type: Boolean,
           default: false,
