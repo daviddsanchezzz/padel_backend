@@ -6,6 +6,7 @@ const {
   getMyOrganizations,
   getOrganization,
   getPublicOrganization,
+  getPublicOrganizationBySlug,
   getPublicCompetition,
   getPublicDivision,
   getPublicMatchDetail,
@@ -14,6 +15,7 @@ const {
 } = require('../controllers/organization.controller');
 
 // Public — no auth required
+router.get('/public/by-slug/:slug', getPublicOrganizationBySlug);
 router.get('/:id/public', getPublicOrganization);
 router.get('/:orgId/competitions/:compId/public', getPublicCompetition);
 router.get('/:orgId/divisions/:divId/public', getPublicDivision);

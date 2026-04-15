@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
 
+const normalizeOrgName = (value = '') =>
+  String(value)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 /**
  * Domain model for organization (club/entity) data.
  *
@@ -23,6 +31,13 @@ const organizationSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+    normalizedName: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
       trim: true,
     },
     slug: {
@@ -74,5 +89,12 @@ const organizationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+organizationSchema.pre('validate', function setNormalizedName(next) {
+  if (this.name) {
+    this.normalizedName = normalizeOrgName(this.name);
+  }
+  next();
+});
 
 module.exports = mongoose.model('Organization', organizationSchema);

@@ -18,20 +18,51 @@ const toSlug = (name) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+const normalizeOrgName = (value = '') =>
+  String(value)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const ensureUniqueSlug = async (baseName, excludeOrgId = null) => {
+  const baseSlug = toSlug(baseName) || 'club';
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await Organization.findOne({ slug: candidate }).select('_id').lean();
+    if (!existing || String(existing._id) === String(excludeOrgId)) return candidate;
+    candidate = `${baseSlug}-${suffix++}`;
+  }
+};
+
+const findPublicOrgByRef = async (orgRef) => {
+  if (!orgRef) return null;
+  const byId = mongoose.Types.ObjectId.isValid(orgRef)
+    ? await Organization.findById(orgRef)
+    : null;
+  if (byId) return byId;
+  return Organization.findOne({ slug: String(orgRef).toLowerCase().trim() });
+};
+
 // ── POST /api/organizations ──────────────────────────────────────────────────
 const createOrganization = async (req, res) => {
   const { name, description, location, type } = req.body;
-  if (!name) return res.status(400).json({ message: 'Name is required' });
+  const cleanName = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!cleanName) return res.status(400).json({ message: 'Name is required' });
 
-  const slug = toSlug(name);
-  const existing = await Organization.findOne({ slug });
+  const normalizedName = normalizeOrgName(cleanName);
+  const existing = await Organization.findOne({ normalizedName });
   if (existing) return res.status(409).json({ message: 'An organization with this name already exists' });
+  const slug = await ensureUniqueSlug(cleanName);
 
   // 1. Create the organization identity in Better Auth (handles members/roles)
   let authOrg;
   try {
     authOrg = await auth.api.createOrganization({
-      body: { name, slug },
+      body: { name: cleanName, slug },
       headers: fromNodeHeaders(req.headers),
     });
   } catch (err) {
@@ -41,7 +72,7 @@ const createOrganization = async (req, res) => {
   // 2. Create domain data record linked to the auth org
   const org = await Organization.create({
     authOrgId: authOrg.id,
-    name,
+    name: cleanName,
     slug,
     description,
     location,
@@ -140,6 +171,34 @@ const getPublicOrganization = async (req, res) => {
   });
 };
 
+// ── GET /api/organizations/public/by-slug/:slug — no auth required ───────────
+const getPublicOrganizationBySlug = async (req, res) => {
+  const org = await Organization.findOne({ slug: req.params.slug?.toLowerCase().trim() });
+  if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
+
+  const competitions = await Competition.find({
+    organization: org.authOrgId,
+    status: 'active',
+  })
+    .select('name type status seasons sport createdAt')
+    .populate('sport', 'name slug')
+    .sort({ createdAt: -1 })
+    .limit(20);
+
+  res.json({
+    id: org._id,
+    name: org.name,
+    slug: org.slug,
+    description: org.description,
+    location: org.location,
+    type: org.type,
+    logo: org.logo,
+    primaryColor: org.primaryColor,
+    activeCompetitions: competitions,
+    createdAt: org.createdAt,
+  });
+};
+
 // ── PUT /api/organizations/:id ───────────────────────────────────────────────
 const updateOrganization = async (req, res) => {
   const org = await Organization.findById(req.params.id);
@@ -149,7 +208,17 @@ const updateOrganization = async (req, res) => {
   }
 
   const { name, description, location, type, logo, isPublic } = req.body;
-  if (name?.trim()) org.name = name.trim();
+  if (name !== undefined) {
+    const cleanName = String(name).trim().replace(/\s+/g, ' ');
+    if (!cleanName) return res.status(400).json({ message: 'Name is required' });
+
+    const normalizedName = normalizeOrgName(cleanName);
+    const nameOwner = await Organization.findOne({ normalizedName }).select('_id').lean();
+    if (nameOwner && String(nameOwner._id) !== String(org._id)) {
+      return res.status(409).json({ message: 'An organization with this name already exists' });
+    }
+    org.name = cleanName;
+  }
   if (description !== undefined) org.description = description;
   if (location !== undefined) org.location = location;
   if (type !== undefined) org.type = type;
@@ -163,7 +232,7 @@ const updateOrganization = async (req, res) => {
 
 // ── GET /api/organizations/:orgId/competitions/:compId/public ────────────────
 const getPublicCompetition = async (req, res) => {
-  const org = await Organization.findById(req.params.orgId);
+  const org = await findPublicOrgByRef(req.params.orgId);
   if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
 
   const competition = await Competition.findById(req.params.compId)
@@ -185,7 +254,7 @@ const getPublicCompetition = async (req, res) => {
 
 // ── GET /api/organizations/:orgId/divisions/:divId/public ────────────────────
 const getPublicDivision = async (req, res) => {
-  const org = await Organization.findById(req.params.orgId);
+  const org = await findPublicOrgByRef(req.params.orgId);
   if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
 
   const division = await Division.findById(req.params.divId).populate({
@@ -283,7 +352,7 @@ const getPublicDivision = async (req, res) => {
 
 // â”€â”€ GET /api/organizations/:orgId/matches/:matchId/public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getPublicMatchDetail = async (req, res) => {
-  const org = await Organization.findById(req.params.orgId);
+  const org = await findPublicOrgByRef(req.params.orgId);
   if (!org || !org.isPublic) return res.status(404).json({ message: 'Organization not found' });
 
   const match = await Match.findById(req.params.matchId)
@@ -315,7 +384,7 @@ const getPublicMatchDetail = async (req, res) => {
 
 // ── POST /api/organizations/:orgId/competitions/:compId/register ─────────────
 const registerForCompetition = async (req, res) => {
-  const org = await Organization.findById(req.params.orgId);
+  const org = await findPublicOrgByRef(req.params.orgId);
   if (!org || !org.isPublic) return res.status(404).json({ message: 'Not found' });
 
   const competition = await Competition.findById(req.params.compId)
@@ -433,6 +502,7 @@ module.exports = {
   getMyOrganizations,
   getOrganization,
   getPublicOrganization,
+  getPublicOrganizationBySlug,
   getPublicCompetition,
   getPublicDivision,
   getPublicMatchDetail,
