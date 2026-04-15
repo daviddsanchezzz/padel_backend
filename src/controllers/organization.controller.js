@@ -341,6 +341,7 @@ const getPublicDivision = async (req, res) => {
   const competition = division.competition;
   if (!competition || competition.status !== 'active') return res.status(404).json({ message: 'Not found' });
   if (competition.organization !== org.authOrgId) return res.status(404).json({ message: 'Not found' });
+  applyEffectiveCompetitionDates(competition);
 
   const isTournament = competition.type === 'tournament';
   const tournamentFormat = competition.settings?.tournamentFormat || 'elimination';
@@ -446,6 +447,7 @@ const getPublicMatchDetail = async (req, res) => {
   if (match.competition.organization !== org.authOrgId) {
     return res.status(404).json({ message: 'Match not found' });
   }
+  applyEffectiveCompetitionDates(match.competition);
 
   const events = await MatchEvent.find({ match: match._id }).sort({ order: 1, minute: 1, createdAt: 1 });
 
