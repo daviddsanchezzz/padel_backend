@@ -576,7 +576,7 @@ const registerForCompetition = async (req, res) => {
 // -- GET /api/organizations/admin/overview (admin only)
 const getAdminOrganizationsOverview = async (_req, res) => {
   const organizations = await Organization.find({})
-    .select('name slug type ownerId stripeCustomerId stripeAccountId stripeConnectActive createdAt')
+    .select('name slug type ownerId authOrgId stripeCustomerId stripeAccountId stripeConnectActive createdAt')
     .sort({ createdAt: -1 })
     .lean();
 
