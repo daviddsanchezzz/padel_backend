@@ -639,10 +639,7 @@ const getAdminOrganizationsOverview = async (_req, res) => {
   const withOverview = organizations.map((org) => {
     const subscription = org.stripeCustomerId ? 'Pendiente integración' : 'Sin suscripción';
     const owner = ownerMap.get(String(org.ownerId)) || null;
-    const membersInCollection = memberMap.get(org.authOrgId) || 0;
-    // Owner might already be in the member collection as 'owner' role — avoid double-counting
-    // by using the raw member count (Better Auth handles this consistently per version).
-    const memberCount = membersInCollection;
+    const memberCount = memberMap.get(org.authOrgId) || 0;
 
     return {
       id: org._id,
