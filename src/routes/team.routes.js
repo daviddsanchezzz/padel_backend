@@ -4,7 +4,7 @@ const {
   getDivisionTeams, createDivisionTeam,
   getCompetitionTeams, createCompetitionTeam,
   getCompetitionTeamsDetailed,
-  updateTeam, deleteTeam, joinTeam,
+  updateTeam, updateTeamDivision, deleteTeam, joinTeam,
 } = require('../controllers/team.controller');
 const { authenticate, requireOrganizer } = require('../middlewares/auth.middleware');
 
@@ -21,6 +21,7 @@ router.post('/competitions/:competitionId/teams', requireOrganizer, createCompet
 
 // Shared
 router.put('/teams/:id',    requireOrganizer, updateTeam);
+router.patch('/teams/:id/division', requireOrganizer, updateTeamDivision);
 router.delete('/teams/:id', requireOrganizer, deleteTeam);
 router.post('/teams/:id/join', joinTeam);
 

@@ -329,9 +329,38 @@ const deleteTeam = async (req, res) => {
   res.json({ message: 'Team deleted' });
 };
 
+const updateTeamDivision = async (req, res) => {
+  const team = await Team.findById(req.params.id).populate('competition');
+  if (!team) return res.status(404).json({ message: 'Team not found' });
+  if (team.competition.organizer.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  const { divisionId } = req.body;
+
+  if (divisionId === null || divisionId === '') {
+    team.division = null;
+    await team.save();
+    return res.json(team);
+  }
+
+  const division = await Division.findById(divisionId);
+  if (!division) return res.status(404).json({ message: 'Division not found' });
+  if (division.competition.toString() !== team.competition._id.toString()) {
+    return res.status(400).json({ message: 'Division does not belong to this competition' });
+  }
+  if (division.seasonName !== team.seasonName) {
+    return res.status(400).json({ message: 'Division is not in the active team season' });
+  }
+
+  team.division = division._id;
+  await team.save();
+  res.json(team);
+};
+
 module.exports = {
   getDivisionTeams, createDivisionTeam,
   getCompetitionTeams, createCompetitionTeam,
   getCompetitionTeamsDetailed,
-  updateTeam, deleteTeam, joinTeam,
+  updateTeam, updateTeamDivision, deleteTeam, joinTeam,
 };
