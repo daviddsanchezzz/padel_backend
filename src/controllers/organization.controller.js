@@ -249,7 +249,7 @@ const getPublicCompetition = async (req, res) => {
     }).sort({ order: 1, createdAt: 1 });
   }
 
-  res.json({ org: { id: org._id, name: org.name, logo: org.logo, primaryColor: org.primaryColor }, competition, divisions });
+  res.json({ org: { id: org._id, slug: org.slug, name: org.name, logo: org.logo, primaryColor: org.primaryColor }, competition, divisions });
 };
 
 // ── GET /api/organizations/:orgId/divisions/:divId/public ────────────────────
@@ -338,7 +338,7 @@ const getPublicDivision = async (req, res) => {
   }
 
   res.json({
-    org: { id: org._id, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
+    org: { id: org._id, slug: org.slug, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
     division,
     allDivisions,
     teams,
@@ -376,7 +376,7 @@ const getPublicMatchDetail = async (req, res) => {
   const events = await MatchEvent.find({ match: match._id }).sort({ order: 1, minute: 1, createdAt: 1 });
 
   res.json({
-    org: { id: org._id, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
+    org: { id: org._id, slug: org.slug, name: org.name, authOrgId: org.authOrgId, logo: org.logo, primaryColor: org.primaryColor },
     match,
     events,
   });
