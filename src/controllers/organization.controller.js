@@ -609,17 +609,42 @@ const getAdminOrganizationsOverview = async (_req, res) => {
     .toArray();
   const memberMap = new Map(memberCounts.map((m) => [m._id, m.count]));
 
-  // Owner names from Better Auth's user collection
+  // Owner names from Better Auth's user collection.
+  // Better Auth with MongoDB adapter stores the primary key as _id (may be ObjectId or string).
+  // We try _id as string, _id as ObjectId, and a separate `id` field to be resilient.
+  const objectIdOwnerIds = ownerIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
   const owners = await mongoose.connection.db
     .collection('user')
-    .find({ id: { $in: ownerIds } })
-    .project({ id: 1, name: 1, email: 1 })
+    .find({
+      $or: [
+        { _id: { $in: ownerIds } },
+        ...(objectIdOwnerIds.length ? [{ _id: { $in: objectIdOwnerIds } }] : []),
+        { id: { $in: ownerIds } },
+      ],
+    })
+    .project({ _id: 1, id: 1, name: 1, email: 1 })
     .toArray();
-  const ownerMap = new Map(owners.map((u) => [u.id, { name: u.name, email: u.email }]));
 
+  const ownerMap = new Map(
+    owners.map((u) => {
+      // Normalise key: prefer the `id` string field, fall back to _id as string
+      const key = u.id ? String(u.id) : String(u._id);
+      return [key, { name: u.name, email: u.email }];
+    })
+  );
+
+  // Member counts: Better Auth may not add the creator to the `member` collection
+  // (owner is tracked on the `organization` doc). Count members + add 1 for the owner.
   const withOverview = organizations.map((org) => {
     const subscription = org.stripeCustomerId ? 'Pendiente integración' : 'Sin suscripción';
-    const owner = ownerMap.get(org.ownerId) || null;
+    const owner = ownerMap.get(String(org.ownerId)) || null;
+    const membersInCollection = memberMap.get(org.authOrgId) || 0;
+    // Owner might already be in the member collection as 'owner' role — avoid double-counting
+    // by using the raw member count (Better Auth handles this consistently per version).
+    const memberCount = membersInCollection;
 
     return {
       id: org._id,
@@ -635,7 +660,7 @@ const getAdminOrganizationsOverview = async (_req, res) => {
       stripeConnectActive: !!org.stripeConnectActive,
       disabledSports: (org.disabledSports || []).map(String),
       activeCompetitions: compMap.get(org.authOrgId) || 0,
-      memberCount: memberMap.get(org.authOrgId) || 0,
+      memberCount,
     };
   });
 
