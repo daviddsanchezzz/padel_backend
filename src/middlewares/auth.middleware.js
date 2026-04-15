@@ -33,6 +33,13 @@ const requireOrganizer = (req, res, next) => {
   next();
 };
 
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+};
+
 /**
  * Organization-scoped role check.
  * Reads organizationId from req.params or req.body.
@@ -61,4 +68,4 @@ const requireOrgRole = (roles) => async (req, res, next) => {
   }
 };
 
-module.exports = { authenticate, requireOrganizer, requireOrgRole };
+module.exports = { authenticate, requireOrganizer, requireAdmin, requireOrgRole };

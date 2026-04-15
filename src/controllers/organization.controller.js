@@ -573,6 +573,60 @@ const registerForCompetition = async (req, res) => {
   res.status(201).json({ requiresPayment: true, checkoutUrl: session.url, teamId: team._id });
 };
 
+// -- GET /api/organizations/admin/overview (admin only)
+const getAdminOrganizationsOverview = async (_req, res) => {
+  const organizations = await Organization.find({})
+    .select('name slug type ownerId stripeCustomerId stripeAccountId stripeConnectActive createdAt')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (organizations.length === 0) {
+    return res.json({ organizations: [] });
+  }
+
+  const authOrgIds = organizations.map((org) => org.authOrgId).filter(Boolean);
+
+  const sportsByOrganization = await Competition.aggregate([
+    { $match: { organization: { $in: authOrgIds }, status: 'active' } },
+    { $lookup: { from: 'sports', localField: 'sport', foreignField: '_id', as: 'sportDoc' } },
+    { $unwind: '$sportDoc' },
+    {
+      $group: {
+        _id: '$organization',
+        sports: { $addToSet: '$sportDoc.name' },
+        activeCompetitions: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const sportsMap = new Map(
+    sportsByOrganization.map((item) => [String(item._id), { sports: item.sports || [], activeCompetitions: item.activeCompetitions || 0 }])
+  );
+
+  const withOverview = organizations.map((org) => {
+    const stats = sportsMap.get(String(org.authOrgId)) || { sports: [], activeCompetitions: 0 };
+    const subscription = org.stripeCustomerId
+      ? 'Pendiente integración'
+      : 'Sin suscripción';
+
+    return {
+      id: org._id,
+      authOrgId: org.authOrgId,
+      name: org.name,
+      slug: org.slug,
+      type: org.type,
+      ownerId: org.ownerId,
+      createdAt: org.createdAt,
+      subscription,
+      stripeConnectActive: !!org.stripeConnectActive,
+      activeCompetitions: stats.activeCompetitions,
+      activeSports: stats.sports,
+    };
+  });
+
+  res.json({ organizations: withOverview });
+};
+
 module.exports = {
   createOrganization,
   getMyOrganizations,
@@ -585,4 +639,5 @@ module.exports = {
   getPublicMatchDetail,
   updateOrganization,
   registerForCompetition,
+  getAdminOrganizationsOverview,
 };
