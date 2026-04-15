@@ -499,6 +499,9 @@ const updateCompetitionSeason = async (req, res) => {
     return res.status(400).json({ message: 'No season fields provided' });
   }
 
+  let oldSeasonName = null;
+  let newSeasonName = null;
+
   if (hasName) {
     const requestedName = normalizeSeasonName(req.body.name ?? req.body.season);
     if (!requestedName) return res.status(400).json({ message: 'Season name is required' });
@@ -507,6 +510,11 @@ const updateCompetitionSeason = async (req, res) => {
       (s, idx) => idx !== seasonIndex && s.name.toLowerCase() === requestedName.toLowerCase()
     );
     if (duplicated) return res.status(409).json({ message: 'Ya existe una temporada con ese nombre' });
+
+    if (currentSeason.name !== requestedName) {
+      oldSeasonName = currentSeason.name;
+      newSeasonName = requestedName;
+    }
     currentSeason.name = requestedName;
   }
 
@@ -534,6 +542,21 @@ const updateCompetitionSeason = async (req, res) => {
   }
 
   await competition.save();
+
+  // Cascade season rename to Division and Team documents
+  if (oldSeasonName && newSeasonName) {
+    await Promise.all([
+      Division.updateMany(
+        { competition: competition._id, seasonName: oldSeasonName },
+        { $set: { seasonName: newSeasonName } }
+      ),
+      Team.updateMany(
+        { competition: competition._id, seasonName: oldSeasonName },
+        { $set: { seasonName: newSeasonName } }
+      ),
+    ]);
+  }
+
   await competition.populate('sport', 'name slug scoringType');
   applyEffectiveDates(competition);
   res.json(competition);

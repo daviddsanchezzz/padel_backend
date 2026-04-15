@@ -16,6 +16,10 @@ const divisionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    seasonId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
     seasonName: {
       type: String,
       required: true,

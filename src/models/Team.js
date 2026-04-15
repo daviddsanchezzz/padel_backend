@@ -34,6 +34,10 @@ const teamSchema = new mongoose.Schema(
       ref: 'Division',
       default: null,
     },
+    seasonId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
     seasonName: {
       type: String,
       required: true,
