@@ -119,6 +119,25 @@ const applyEffectiveDates = (competitionDoc) => {
   return competitionDoc;
 };
 
+const normalizeSeasonName = (value = '') => String(value).trim().replace(/\s+/g, ' ');
+
+const normalizeSeasonDates = ({ startDate, endDate }) => {
+  const nextStartDate = typeof startDate === 'string' ? startDate.trim() : '';
+  const nextEndDate = typeof endDate === 'string' ? endDate.trim() : '';
+
+  if (nextStartDate && !isValidDateString(nextStartDate)) {
+    return { ok: false, message: 'Fecha inicio invalida (formato: YYYY-MM-DD)' };
+  }
+  if (nextEndDate && !isValidDateString(nextEndDate)) {
+    return { ok: false, message: 'Fecha fin invalida (formato: YYYY-MM-DD)' };
+  }
+  if (nextStartDate && nextEndDate && nextEndDate < nextStartDate) {
+    return { ok: false, message: 'La fecha fin no puede ser menor que la fecha inicio' };
+  }
+
+  return { ok: true, startDate: nextStartDate, endDate: nextEndDate };
+};
+
 const getCompetitions = async (req, res) => {
   const competitions = await Competition.find({ organizer: req.user._id })
     .populate('sport', 'name slug scoringType')
@@ -389,13 +408,33 @@ const createNewSeason = async (req, res) => {
     staying.push(st.slice(canUp, canDown > 0 ? n - canDown : n));
   }
 
-  // Generate next season name (Temporada 2, 3, etc)
+  const requestedSeasonName = normalizeSeasonName(req.body?.season || '');
   const nextSeasonNum = competition.seasons.length + 1;
-  const newSeasonName = `Temporada ${nextSeasonNum}`;
+  const fallbackSeasonName = `Temporada ${nextSeasonNum}`;
+  const newSeasonName = requestedSeasonName || fallbackSeasonName;
+  const seasonDates = normalizeSeasonDates({
+    startDate: req.body?.startDate,
+    endDate: req.body?.endDate,
+  });
+  if (!seasonDates.ok) {
+    return res.status(400).json({ message: seasonDates.message });
+  }
+
+  const duplicatedSeason = competition.seasons.find(
+    (s) => s.name.toLowerCase() === newSeasonName.toLowerCase()
+  );
+  if (duplicatedSeason) {
+    return res.status(409).json({ message: 'Ya existe una temporada con ese nombre' });
+  }
 
   // Add new season to array and mark as active
   competition.seasons.forEach((s) => (s.isActive = false));
-  competition.seasons.push({ name: newSeasonName, isActive: true, startDate: '', endDate: '' });
+  competition.seasons.push({
+    name: newSeasonName,
+    isActive: true,
+    startDate: seasonDates.startDate,
+    endDate: seasonDates.endDate,
+  });
   await competition.save();
 
   // Create new divisions with updated teams
@@ -432,8 +471,66 @@ const createNewSeason = async (req, res) => {
   res.status(201).json(competition);
 };
 
+const updateCompetitionSeason = async (req, res) => {
+  const competition = await Competition.findOne({ _id: req.params.id, organizer: req.user._id });
+  if (!competition) return res.status(404).json({ message: 'Competition not found' });
+  if (competition.type !== 'league') return res.status(400).json({ message: 'Only for leagues' });
+
+  const seasonIndex = competition.seasons.findIndex((s) => String(s._id) === String(req.params.seasonId));
+  if (seasonIndex < 0) return res.status(404).json({ message: 'Season not found' });
+
+  const currentSeason = competition.seasons[seasonIndex];
+  const hasName = Object.prototype.hasOwnProperty.call(req.body, 'name') || Object.prototype.hasOwnProperty.call(req.body, 'season');
+  const hasStartDate = Object.prototype.hasOwnProperty.call(req.body, 'startDate');
+  const hasEndDate = Object.prototype.hasOwnProperty.call(req.body, 'endDate');
+  const hasIsActive = Object.prototype.hasOwnProperty.call(req.body, 'isActive');
+
+  if (!hasName && !hasStartDate && !hasEndDate && !hasIsActive) {
+    return res.status(400).json({ message: 'No season fields provided' });
+  }
+
+  if (hasName) {
+    const requestedName = normalizeSeasonName(req.body.name ?? req.body.season);
+    if (!requestedName) return res.status(400).json({ message: 'Season name is required' });
+
+    const duplicated = competition.seasons.find(
+      (s, idx) => idx !== seasonIndex && s.name.toLowerCase() === requestedName.toLowerCase()
+    );
+    if (duplicated) return res.status(409).json({ message: 'Ya existe una temporada con ese nombre' });
+    currentSeason.name = requestedName;
+  }
+
+  if (hasStartDate || hasEndDate) {
+    const seasonDates = normalizeSeasonDates({
+      startDate: hasStartDate ? req.body.startDate : currentSeason.startDate,
+      endDate: hasEndDate ? req.body.endDate : currentSeason.endDate,
+    });
+    if (!seasonDates.ok) return res.status(400).json({ message: seasonDates.message });
+    currentSeason.startDate = seasonDates.startDate;
+    currentSeason.endDate = seasonDates.endDate;
+  }
+
+  if (hasIsActive) {
+    const shouldBeActive = Boolean(req.body.isActive);
+    if (shouldBeActive) {
+      competition.seasons.forEach((s, idx) => { s.isActive = idx === seasonIndex; });
+    } else {
+      const activeCount = competition.seasons.filter((s) => s.isActive).length;
+      if (currentSeason.isActive && activeCount <= 1) {
+        return res.status(400).json({ message: 'Debe existir al menos una temporada activa' });
+      }
+      currentSeason.isActive = false;
+    }
+  }
+
+  await competition.save();
+  await competition.populate('sport', 'name slug scoringType');
+  applyEffectiveDates(competition);
+  res.json(competition);
+};
+
 module.exports = {
   getCompetitions, getCompetition, getPlayerCompetitions,
   createCompetition, updateCompetition, deleteCompetition,
-  getNewSeasonPreview, createNewSeason,
+  getNewSeasonPreview, createNewSeason, updateCompetitionSeason,
 };
