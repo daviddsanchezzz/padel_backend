@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getDivisionTeams, createDivisionTeam,
   getCompetitionTeams, createCompetitionTeam,
+  getCompetitionTeamsDetailed,
   updateTeam, deleteTeam, joinTeam,
 } = require('../controllers/team.controller');
 const { authenticate, requireOrganizer } = require('../middlewares/auth.middleware');
@@ -14,6 +15,7 @@ router.get('/divisions/:divisionId/teams',  getDivisionTeams);
 router.post('/divisions/:divisionId/teams', requireOrganizer, createDivisionTeam);
 
 // Tournament teams (competition-scoped, no division)
+router.get('/competitions/:competitionId/teams/detailed', requireOrganizer, getCompetitionTeamsDetailed);
 router.get('/competitions/:competitionId/teams',  getCompetitionTeams);
 router.post('/competitions/:competitionId/teams', requireOrganizer, createCompetitionTeam);
 

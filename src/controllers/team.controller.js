@@ -102,6 +102,69 @@ const getCompetitionTeams = async (req, res) => {
   res.json(teams);
 };
 
+// Organizer-only detailed list for all teams in a competition (active season)
+const getCompetitionTeamsDetailed = async (req, res) => {
+  const competition = await Competition.findOne({
+    _id: req.params.competitionId,
+    organizer: req.user._id,
+  });
+  if (!competition) return res.status(404).json({ message: 'Competition not found' });
+
+  const activeSeason = competition.seasons.find((s) => s.isActive);
+  if (!activeSeason) return res.status(404).json({ message: 'No active season' });
+
+  const teams = await Team.find({
+    competition: competition._id,
+    seasonName: activeSeason.name,
+  })
+    .populate('division', 'name order seasonName')
+    .sort({ createdAt: 1 });
+
+  const detailed = teams.map((team) => ({
+    _id: team._id,
+    name: team.name,
+    seasonName: team.seasonName,
+    division: team.division
+      ? {
+          _id: team.division._id,
+          name: team.division.name,
+          order: team.division.order,
+        }
+      : null,
+    players: Array.isArray(team.players)
+      ? team.players.map((p) => ({
+          name: p.name,
+          dorsal: p.dorsal ?? null,
+          userId: p.userId ?? null,
+        }))
+      : [],
+    playerCount: Array.isArray(team.players) ? team.players.length : 0,
+    group: team.group || null,
+    contactEmail: team.contactEmail || null,
+    paymentStatus: team.paymentStatus || 'free',
+    createdAt: team.createdAt,
+    updatedAt: team.updatedAt,
+  }));
+
+  detailed.sort((a, b) => {
+    const orderA = a.division?.order ?? Number.MAX_SAFE_INTEGER;
+    const orderB = b.division?.order ?? Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+
+  res.json({
+    competition: {
+      _id: competition._id,
+      name: competition.name,
+      type: competition.type,
+    },
+    activeSeason: activeSeason.name,
+    totalTeams: detailed.length,
+    teams: detailed,
+  });
+};
+
 const createCompetitionTeam = async (req, res) => {
   const { competitionId } = req.params;
   const { name, playerNames, seed } = req.body;
@@ -269,5 +332,6 @@ const deleteTeam = async (req, res) => {
 module.exports = {
   getDivisionTeams, createDivisionTeam,
   getCompetitionTeams, createCompetitionTeam,
+  getCompetitionTeamsDetailed,
   updateTeam, deleteTeam, joinTeam,
 };
