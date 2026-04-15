@@ -589,9 +589,37 @@ const getAdminOrganizationsOverview = async (_req, res) => {
     return res.json({ organizations: [], allSports });
   }
 
+  const authOrgIds = organizations.map((o) => o.authOrgId).filter(Boolean);
+  const ownerIds   = [...new Set(organizations.map((o) => o.ownerId).filter(Boolean))];
+
+  // Active competition counts per authOrgId
+  const compCounts = await Competition.aggregate([
+    { $match: { organization: { $in: authOrgIds }, status: 'active' } },
+    { $group: { _id: '$organization', count: { $sum: 1 } } },
+  ]);
+  const compMap = new Map(compCounts.map((c) => [c._id, c.count]));
+
+  // Member counts per authOrgId from Better Auth's member collection
+  const memberCounts = await mongoose.connection.db
+    .collection('member')
+    .aggregate([
+      { $match: { organizationId: { $in: authOrgIds } } },
+      { $group: { _id: '$organizationId', count: { $sum: 1 } } },
+    ])
+    .toArray();
+  const memberMap = new Map(memberCounts.map((m) => [m._id, m.count]));
+
+  // Owner names from Better Auth's user collection
+  const owners = await mongoose.connection.db
+    .collection('user')
+    .find({ id: { $in: ownerIds } })
+    .project({ id: 1, name: 1, email: 1 })
+    .toArray();
+  const ownerMap = new Map(owners.map((u) => [u.id, { name: u.name, email: u.email }]));
+
   const withOverview = organizations.map((org) => {
     const subscription = org.stripeCustomerId ? 'Pendiente integración' : 'Sin suscripción';
-    const disabledIds = new Set((org.disabledSports || []).map(String));
+    const owner = ownerMap.get(org.ownerId) || null;
 
     return {
       id: org._id,
@@ -600,10 +628,14 @@ const getAdminOrganizationsOverview = async (_req, res) => {
       slug: org.slug,
       type: org.type,
       ownerId: org.ownerId,
+      ownerName: owner?.name || null,
+      ownerEmail: owner?.email || null,
       createdAt: org.createdAt,
       subscription,
       stripeConnectActive: !!org.stripeConnectActive,
-      disabledSports: [...disabledIds],
+      disabledSports: (org.disabledSports || []).map(String),
+      activeCompetitions: compMap.get(org.authOrgId) || 0,
+      memberCount: memberMap.get(org.authOrgId) || 0,
     };
   });
 
