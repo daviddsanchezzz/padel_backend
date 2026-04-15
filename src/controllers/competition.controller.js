@@ -538,8 +538,51 @@ const updateCompetitionSeason = async (req, res) => {
   res.json(competition);
 };
 
+// GET /api/competitions/summary — organizer dashboard stats
+const getOrgSummary = async (req, res) => {
+  const organizerId = req.user._id;
+
+  const [competitions, teamCount, pendingMatchCount] = await Promise.all([
+    Competition.find({ organizer: organizerId })
+      .select('name type status sport createdAt')
+      .populate('sport', 'name slug')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Team.countDocuments({
+      competition: {
+        $in: await Competition.find({ organizer: organizerId, status: 'active' })
+          .select('_id').lean().then((cs) => cs.map((c) => c._id)),
+      },
+    }),
+    Match.countDocuments({
+      competition: {
+        $in: await Competition.find({ organizer: organizerId, status: 'active' })
+          .select('_id').lean().then((cs) => cs.map((c) => c._id)),
+      },
+      winner: null,
+      teamA: { $ne: null },
+      teamB: { $ne: null },
+    }),
+  ]);
+
+  const activeLeagues     = competitions.filter((c) => c.type === 'league'     && c.status === 'active').length;
+  const activeTournaments = competitions.filter((c) => c.type === 'tournament' && c.status === 'active').length;
+  const draftCount        = competitions.filter((c) => c.status === 'draft').length;
+  const recentCompetitions = competitions.slice(0, 5);
+
+  res.json({
+    activeLeagues,
+    activeTournaments,
+    draftCount,
+    totalTeams: teamCount,
+    pendingMatches: pendingMatchCount,
+    recentCompetitions,
+  });
+};
+
 module.exports = {
   getCompetitions, getCompetition, getPlayerCompetitions,
   createCompetition, updateCompetition, deleteCompetition,
   getNewSeasonPreview, createNewSeason, updateCompetitionSeason,
+  getOrgSummary,
 };
