@@ -349,7 +349,9 @@ const getPublicDivision = async (req, res) => {
 
   const allDivisions = await Division.find({
     competition: competition._id,
-    seasonName: division.seasonName,
+    ...(division.seasonId
+      ? { seasonId: division.seasonId }
+      : { seasonName: division.seasonName }),
   }).sort({ order: 1, createdAt: 1 });
 
   const teams = await Team.find({ division: division._id }).sort({ createdAt: 1 });
