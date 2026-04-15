@@ -5,6 +5,13 @@ const { MongoClient } = require('mongodb');
 
 const client = new MongoClient(process.env.MONGODB_URI);
 const isProduction = process.env.NODE_ENV === 'production';
+const rawCookieSameSite = (process.env.BETTER_AUTH_COOKIE_SAMESITE || 'lax').toLowerCase();
+const normalizedCookieSameSite = ['lax', 'strict', 'none'].includes(rawCookieSameSite)
+  ? rawCookieSameSite
+  : 'lax';
+const cookieSameSite = !isProduction && normalizedCookieSameSite === 'none'
+  ? 'lax'
+  : normalizedCookieSameSite;
 const trustedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -66,7 +73,7 @@ const auth = betterAuth({
     // SameSite=None + Secure allows the browser to send the session cookie
     // on cross-origin requests with credentials:include.
     defaultCookieAttributes: {
-      sameSite: isProduction ? 'none' : 'lax',
+      sameSite: cookieSameSite,
       secure: isProduction,
     },
   },
